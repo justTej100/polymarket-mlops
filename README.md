@@ -1,6 +1,6 @@
 # polymarket-mlops
 
-A production-grade MLOps system for automated prediction market trading on [Polymarket](https://polymarket.com). Combines 9 short-horizon trading strategies, a multi-agent LLM analyst framework, real-time signal pipelines, and full MLOps infrastructure — built to demonstrate skills in MLOps engineering, AI agent systems, and real-time data pipelines.
+A MLOps system for automated prediction market trading on [Polymarket](https://polymarket.com). Combines 9 short-horizon trading strategies, a multi-agent LLM analyst framework, real-time signal pipelines, and full MLOps infrastructure — built to demonstrate skills in MLOps engineering, AI agent systems, and real-time data pipelines.
 
 > **Disclaimer:** All strategies run in paper-trading (simulation) mode by default. This project is for educational and portfolio purposes. Prediction market trading carries significant financial risk.
 
