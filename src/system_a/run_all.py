@@ -1,4 +1,15 @@
-"""Spawn enabled System A strategies as independent subprocesses."""
+"""Spawn enabled System A strategies as independent subprocesses.
+
+Reads ``RUN_STRAT1`` … ``RUN_STRAT9`` from env. Each enabled strategy runs as
+its own Python process (``python -m src.system_a.strategy_N_*``).
+
+If a strategy process exits, it is automatically restarted every 5 seconds.
+
+Environment:
+  - ``RUN_SYSTEM_A`` — master toggle for all of System A
+  - ``RUN_STRAT1`` … ``RUN_STRAT9`` — per-strategy toggles
+  - ``DRY_RUN`` — passed through to child processes
+"""
 
 from __future__ import annotations
 
@@ -34,6 +45,7 @@ IMPLEMENTED = set(STRATEGY_MODULES.keys())
 
 
 def enabled_strategies() -> list[int]:
+    """Return strategy ids with ``RUN_STRAT{n}=true`` and an implemented module."""
     enabled: list[int] = []
     for strat_id in STRATEGY_MODULES:
         flag = os.getenv(f"RUN_STRAT{strat_id}", "false").lower() == "true"
@@ -43,6 +55,7 @@ def enabled_strategies() -> list[int]:
 
 
 def spawn_strategy(strat_id: int, dry_run: bool = True) -> subprocess.Popen:
+    """Start ``python -m src.system_a.strategy_N_*`` as a subprocess."""
     module = STRATEGY_MODULES[strat_id]
     env = os.environ.copy()
     env["DRY_RUN"] = "true" if dry_run else "false"

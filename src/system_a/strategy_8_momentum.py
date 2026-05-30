@@ -1,4 +1,16 @@
-"""Strategy 8 — MACD / RSI / VWAP confluence on binary token price."""
+"""Strategy 8 — Binary Momentum (MACD / RSI / VWAP confluence).
+
+Entry logic:
+  - Track rolling UP token prices in _prices deque
+  - Score: MACD crossover (+2), histogram rising (+1), RSI neutral (+1), above VWAP (+1)
+  - Enter when score >= STRAT8_MIN_SCORE_TO_ENTER
+  - Reject if RSI overbought or price too far from VWAP
+
+Connections: ``src.data.indicators`` + local price deque → ``POST /signal/a/8``.
+
+Environment: STRAT8_BAR_SECONDS, STRAT8_MACD_FAST/SLOW/SIGNAL, STRAT8_RSI_*,
+    STRAT8_VWAP_STRETCH_LIMIT, STRAT8_MIN_SCORE_TO_ENTER, STRAT8_MAX_NOTIONAL_USD.
+"""
 
 from __future__ import annotations
 
@@ -19,6 +31,8 @@ logger = logging.getLogger(__name__)
 
 
 class Strategy8Momentum(BaseStrategy):
+    """MACD/RSI/VWAP confluence scorer on UP token (strategy_id=8)."""
+
     def __init__(self, use_mock: bool | None = None) -> None:
         super().__init__(
             StrategyConfig(

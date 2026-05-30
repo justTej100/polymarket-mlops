@@ -1,4 +1,17 @@
-"""Strategy 3 — Low-Side Dual Reversion (buy both sides when compressed)."""
+"""Strategy 3 — Low-Side Dual Reversion (buy both sides when compressed).
+
+Entry logic:
+  - Both UP and DOWN asks between STRAT3_MIN and STRAT3_MAX (e.g. 30–48c)
+  - Combined cost <= STRAT3_MAX_COMBINED_COST (locked edge vs $1 payout)
+  - At least STRAT3_MIN_TIME_REMAINING_SECONDS left
+  - Sends two signals: one UP leg, one DOWN leg
+
+Connections: ``BaseStrategy`` dual-leg → ``POST /signal/a/3`` (two orders per cycle).
+
+Environment: STRAT3_MAX_ASK_EITHER_SIDE, STRAT3_MIN_ASK_EITHER_SIDE,
+    STRAT3_MAX_COMBINED_COST, STRAT3_MIN_TIME_REMAINING_SECONDS,
+    STRAT3_MAX_NOTIONAL_PER_SIDE_USD.
+"""
 
 from __future__ import annotations
 
@@ -16,6 +29,8 @@ logger = logging.getLogger(__name__)
 
 
 class Strategy3DualReversion(BaseStrategy):
+    """Compressed dual-side arb (strategy_id=3)."""
+
     def __init__(self, use_mock: bool | None = None) -> None:
         super().__init__(
             StrategyConfig(

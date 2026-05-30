@@ -1,4 +1,16 @@
-"""Strategy 2 — 99c Sniper (near-resolution strike)."""
+"""Strategy 2 — 99c Sniper (near-resolution strike).
+
+Entry logic:
+  - Time remaining <= STRAT2_MAX_TIME_REMAINING_SECONDS (default 60s)
+  - Spot clearly past strike by STRAT2_MIN_SPOT_DISTANCE_FROM_STRIKE
+  - Winning side ask <= STRAT2_MAX_ASK_PRICE (default 99c)
+  - Buy winning side, hold to settlement
+
+Connections: ``BaseStrategy`` + Binance spot → ``POST /signal/a/2``.
+
+Environment: STRAT2_MAX_TIME_REMAINING_SECONDS, STRAT2_MAX_ASK_PRICE,
+    STRAT2_MIN_SPOT_DISTANCE_FROM_STRIKE, STRAT2_MAX_SHARES, STRAT2_MAX_NOTIONAL_USD.
+"""
 
 from __future__ import annotations
 
@@ -16,6 +28,8 @@ logger = logging.getLogger(__name__)
 
 
 class Strategy2Sniper(BaseStrategy):
+    """Late-window strike-distance sniper (strategy_id=2)."""
+
     def __init__(self, use_mock: bool | None = None) -> None:
         super().__init__(
             StrategyConfig(

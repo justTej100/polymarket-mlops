@@ -1,4 +1,16 @@
-"""Strategy 4 — Pre-Order next market window at mid prices."""
+"""Strategy 4 — Pre-Order next market window at mid prices.
+
+Entry logic:
+  - In last STRAT4_ENTRY_WINDOW_SECONDS_BEFORE_CLOSE of current market
+  - Current market "stable": both sides between STRAT4_STABLE_MIN and MAX
+  - Place limit bids at STRAT4_PRE_ORDER_PRICE on NEXT period UP and DOWN
+  - Fires once per next_market_id (deduped via _preordered set)
+
+Connections: ``BaseStrategy`` → ``POST /signal/a/4`` on ``next_market_id``.
+
+Environment: STRAT4_CURRENT_MARKET_STABLE_MIN/MAX, STRAT4_PRE_ORDER_PRICE,
+    STRAT4_ENTRY_WINDOW_SECONDS_BEFORE_CLOSE, STRAT4_SHARES_PER_SIDE, STRAT4_MAX_NOTIONAL_USD.
+"""
 
 from __future__ import annotations
 
@@ -16,6 +28,8 @@ logger = logging.getLogger(__name__)
 
 
 class Strategy4Preorder(BaseStrategy):
+    """Next-window paired pre-orders (strategy_id=4)."""
+
     def __init__(self, use_mock: bool | None = None) -> None:
         super().__init__(
             StrategyConfig(

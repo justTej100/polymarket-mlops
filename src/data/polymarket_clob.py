@@ -1,4 +1,16 @@
-"""Polymarket CLOB read client with abstract interface for API drift."""
+"""Polymarket CLOB read client with abstract interface for API drift.
+
+Key types:
+  - ``MarketInfo`` — active 5m market (strike, tokens, expiry)
+  - ``OrderBook`` — bids/asks with best_bid, best_ask helpers
+  - ``PolymarketClobClient`` — ABC; swap ``HttpPolymarketClobClient`` if API changes
+  - ``MockPolymarketClobClient`` — fixture books for tests and paper mode
+
+Connections:
+    ``feature_pipeline``, ``system_a`` strategies, ``system_c.wallet_ranker``, copytrade.
+
+Environment variables: none (HTTP bases are module defaults or constructor args).
+"""
 
 from __future__ import annotations
 
@@ -18,12 +30,16 @@ GAMMA_HTTP_BASE = "https://gamma-api.polymarket.com"
 
 @dataclass
 class OrderBookLevel:
+    """Single price level on one side of the CLOB book."""
+
     price: float
     size: float
 
 
 @dataclass
 class OrderBook:
+    """Bid/ask ladder for one token with derived best bid/ask and depth."""
+
     market_id: str
     bids: list[OrderBookLevel]
     asks: list[OrderBookLevel]
@@ -48,6 +64,8 @@ class OrderBook:
 
 @dataclass
 class MarketInfo:
+    """Active up/down market metadata including optional next-window IDs."""
+
     market_id: str
     slug: str
     asset: str

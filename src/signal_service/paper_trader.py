@@ -1,4 +1,16 @@
-"""Paper order simulator with DRY_RUN, caps, and session kill switch."""
+"""Paper order simulator — DRY_RUN execution with risk controls.
+
+``PaperOrderSimulator.execute()`` validates and records a simulated trade:
+  - Session kill switch: halts if drawdown exceeds ``SESSION_DRAWDOWN_KILL_PCT``
+  - Per-order notional cap: ``MAX_NOTIONAL_PER_ORDER_USD``
+  - Always records to BenchmarkStore (no real wallet interaction)
+
+``simulate_resolution()`` closes trades when ``POST /outcome`` is called.
+
+Environment:
+  - ``DRY_RUN``, ``SESSION_BUDGET_USD``, ``SESSION_DRAWDOWN_KILL_PCT``,
+    ``MAX_NOTIONAL_PER_ORDER_USD``
+"""
 
 from __future__ import annotations
 
@@ -19,6 +31,8 @@ MAX_NOTIONAL_PER_ORDER = float(os.getenv("MAX_NOTIONAL_PER_ORDER_USD", "100"))
 
 @dataclass
 class PaperOrderSimulator:
+    """Accept or reject signals under DRY_RUN caps and session kill switch."""
+
     benchmark: BenchmarkStore
     dry_run: bool = DRY_RUN
     session_budget: float = SESSION_BUDGET

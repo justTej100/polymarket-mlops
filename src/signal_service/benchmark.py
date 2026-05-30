@@ -1,4 +1,14 @@
-"""Per-system PnL, win rate, and trade log tracking."""
+"""Per-system PnL, win rate, and trade log tracking.
+
+``BenchmarkStore`` persists:
+  - ``data/benchmark/state.json`` — aggregate stats per system (a/b/c)
+  - ``data/benchmark/trade_log.jsonl`` — one JSON line per trade
+
+``resolve_market(market_id, winning_side)`` marks open trades won/lost and
+updates PnL when a 5-minute market settles.
+
+Consumed by: paper_trader, main.py ``/benchmark``, feature_builder, Grafana via Prometheus.
+"""
 
 from __future__ import annotations
 
@@ -15,6 +25,8 @@ from src.signal_service.schemas import BenchmarkResponse, BenchmarkSystems, Syst
 
 @dataclass
 class TradeRecord:
+    """One paper trade row persisted to the JSONL trade log."""
+
     trade_id: str
     system: str
     strategy_id: int | None
@@ -47,6 +59,8 @@ class SystemStats:
 
 @dataclass
 class BenchmarkStore:
+    """Thread-safe trade log and per-system PnL/win-rate aggregates."""
+
     data_dir: Path = field(default_factory=lambda: Path("data/benchmark"))
     _lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
     systems: dict[str, SystemStats] = field(

@@ -1,4 +1,27 @@
-"""One-command supervisor: feature pipeline, signal service, System A, System C."""
+"""Process supervisor: feature pipeline, signal service, System A, and System C.
+
+Single entry point for local or compose-style runs (``make start`` / ``make run``).
+Spawns child processes in order, waits for the signal service health endpoint,
+optionally starts System A and C, prints the operator URL banner, and tears down
+the whole tree if any child exits.
+
+Spawn order:
+    1. ``src.data.feature_pipeline`` — Binance + CLOB → Redis.
+    2. uvicorn ``src.signal_service.main:app`` on port 8000.
+    3. ``wait_for_http_health`` via ``src.startup``.
+    4. ``src.system_a.run_all`` (dry-run subprocesses) if enabled.
+    5. ``src.system_c.copytrade`` if enabled.
+
+Key API:
+    main — supervise loop; ``_spawn`` / ``_shutdown`` handle SIGINT/SIGTERM.
+
+Environment variables:
+    FEATURE_PIPELINE_MOCK — mock CLOB in pipeline (default follows ``DRY_RUN``).
+    DRY_RUN — when true, defaults pipeline mock to true.
+    SIGNAL_SERVICE_URL — health-check target (default ``http://localhost:8000``).
+    RUN_SYSTEM_A — spawn System A (default ``true``).
+    RUN_SYSTEM_C — spawn System C (default ``true``).
+"""
 
 from __future__ import annotations
 

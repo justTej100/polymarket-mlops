@@ -1,4 +1,17 @@
-"""Strategy 7 — Fibonacci retracement entries on token swing."""
+"""Strategy 7 — Fibonacci retracement entries on token price swing.
+
+Entry logic:
+  - Observe swing high/low for STRAT7_SWING_OBSERVE_SECONDS after market open
+  - Compute fib retracement levels (23.6%, 38.2%, 50%, 61.8%) from swing range
+  - Place staged bids when price reaches each level (size scales down per level)
+  - Invalidate if price breaks below swing low minus STRAT7_INVALIDATION_BUFFER
+
+Connections: CLOB UP token swing tracking → ``POST /signal/a/7`` (staged levels).
+
+Environment: STRAT7_FIB_LEVELS, STRAT7_SWING_OBSERVE_SECONDS, STRAT7_INVALIDATION_BUFFER,
+    STRAT7_MIN_TIME_REMAINING_SECONDS, STRAT7_SIZE_LARGEST_LEVEL, STRAT7_SIZE_SCALE_FACTOR,
+    STRAT7_MAX_NOTIONAL_USD.
+"""
 
 from __future__ import annotations
 
@@ -20,6 +33,8 @@ def _parse_levels(raw: str) -> list[float]:
 
 
 class Strategy7Fibonacci(BaseStrategy):
+    """Staged fib retracement bids on UP token swing (strategy_id=7)."""
+
     def __init__(self, use_mock: bool | None = None) -> None:
         super().__init__(
             StrategyConfig(

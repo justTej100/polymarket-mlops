@@ -1,4 +1,15 @@
-"""Strategy 5 — Cross-Market lead-lag (BTC leads, altcoins lag)."""
+"""Strategy 5 — Cross-Market lead-lag (BTC leads, altcoins lag).
+
+Entry logic (Variant A from README):
+  - Detect BTC move >= STRAT5_MIN_LEAD_MOVE_PCT over STRAT5_MAX_LAG_SECONDS
+  - For each lag asset (ETH/SOL/XRP), if UP token not yet repriced (ask <= 55c)
+  - Aggressive buy on lag market with slippage buffer
+
+Connections: Binance lead asset + lag ``list_active_markets`` → ``POST /signal/a/5``.
+
+Environment: STRAT5_LEAD_ASSET, STRAT5_LAG_ASSETS, STRAT5_MIN_LEAD_MOVE_PCT,
+    STRAT5_AGGRESSIVE_LIMIT_SLIPPAGE, STRAT5_MAX_LAG_SECONDS, STRAT5_MAX_NOTIONAL_PER_PAIR_USD.
+"""
 
 from __future__ import annotations
 
@@ -16,6 +27,8 @@ logger = logging.getLogger(__name__)
 
 
 class Strategy5CrossMarket(BaseStrategy):
+    """BTC lead, alt lag momentum (strategy_id=5)."""
+
     def __init__(self, use_mock: bool | None = None) -> None:
         super().__init__(
             StrategyConfig(

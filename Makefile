@@ -1,3 +1,5 @@
+# polymarket-mlops Makefile
+# make run  — full bootstrap: venv, deps, Docker, supervisor (see docs/CODEBASE.md)
 .PHONY: up down test lint start install setup run venv venv-reset env help urls
 
 VENV ?= .venv

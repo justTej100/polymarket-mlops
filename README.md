@@ -1203,6 +1203,16 @@ Watch the benchmark dashboard at http://localhost:3000.
 
 ---
 
+## Documentation
+
+- **[Codebase guide](docs/CODEBASE.md)** — what each file does, data flow, Redis keys, critical paths
+- **Strategy specs** — detailed entry/exit logic for all 9 strategies in this README (sections above)
+- **API** — interactive docs at http://localhost:8000/docs when running
+
+Each Python module also has a module docstring at the top of the file explaining its role in the system.
+
+---
+
 ## Development
 
 From the project root — no manual venv activation:

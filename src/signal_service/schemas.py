@@ -1,4 +1,10 @@
-"""OpenAPI response models — explicit schemas for Swagger and clients."""
+"""OpenAPI response models — explicit schemas for Swagger and clients.
+
+Without these Pydantic models, FastAPI shows generic ``additionalProp1`` placeholders
+in /docs. Each model maps 1:1 to a GET/POST response body.
+
+Models: BenchmarkResponse, MetaWeightsResponse, HealthResponse, OutcomeResponse.
+"""
 
 from __future__ import annotations
 

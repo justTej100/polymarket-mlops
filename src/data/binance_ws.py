@@ -1,4 +1,17 @@
-"""Binance WebSocket client for BTC/ETH/SOL/XRP spot streams."""
+"""Binance WebSocket client for BTC/ETH/SOL/XRP spot streams.
+
+``BinanceWSClient`` subscribes to mini-ticker streams and maintains a rolling
+price history per asset. Strategies call ``latest_price()`` and ``pct_change()``
+for dump detection (strat 9), lead-lag (strat 5), and regime gating (strat 6).
+
+``MockBinanceWSClient`` — in-memory client for tests and DRY_RUN; no network.
+
+Connections:
+    ``src.data.feature_pipeline`` (spot Redis hashes).
+    System A strategies via ``BaseStrategy.binance``.
+
+Environment variables: none (callers choose live vs ``MockBinanceWSClient``).
+"""
 
 from __future__ import annotations
 
@@ -20,6 +33,8 @@ BINANCE_WS_BASE = "wss://stream.binance.com:9443/ws"
 
 @dataclass
 class PriceTick:
+    """Normalized spot tick from Binance mini-ticker stream."""
+
     asset: str
     price: float
     timestamp_ms: int

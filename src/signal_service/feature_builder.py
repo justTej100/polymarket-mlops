@@ -1,4 +1,13 @@
-"""Build meta-learner feature vectors from runtime state."""
+"""Build meta-learner feature vectors from Redis + benchmark state.
+
+``FeatureBuilder.build()`` returns ``MetaFeatures`` with:
+  hour of day, day of week, BTC 1h volatility, book depth,
+  rolling win rates for A/B/C, minutes since last System B update.
+
+Features are fed to ``MetaLearner.predict_weights()`` and ``record_outcome()``.
+
+Environment: ``REDIS_URL``
+"""
 
 from __future__ import annotations
 
@@ -18,6 +27,8 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
 @dataclass
 class MetaFeatures:
+    """Feature vector for meta-learner training and inference."""
+
     hour_utc: float
     day_of_week: float
     btc_volatility_1h: float
@@ -44,6 +55,8 @@ class MetaFeatures:
 
 
 class FeatureBuilder:
+    """Assemble meta-learner inputs from Redis hashes and benchmark win rates."""
+
     def __init__(
         self,
         redis_url: str = REDIS_URL,

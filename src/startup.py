@@ -1,4 +1,24 @@
-"""Wait for dependent services before starting workers."""
+"""Startup helpers: dependency health checks and operator URL banner.
+
+Used by ``src.supervisor`` after spawning the signal service so System A/C workers
+never POST to a dead API, and so operators see where to open docs and dashboards.
+Does not start processes itself.
+
+Key API:
+    service_urls / print_service_urls — resolve and print FastAPI, Grafana, MLflow,
+        and Prometheus URLs from environment defaults.
+    wait_for_http_health — blocking poll until ``GET {base_url}{path}`` returns HTTP 200.
+
+Connections:
+    Imported by ``src.supervisor`` (health gate + banner after workers start).
+    Makefile ``urls`` target may call ``print_service_urls`` directly.
+
+Environment variables:
+    SIGNAL_SERVICE_URL — signal service base URL (default ``http://localhost:8000``).
+    GRAFANA_URL — Grafana UI (default ``http://localhost:3000``).
+    MLFLOW_TRACKING_URI — MLflow tracking server (default ``http://localhost:5000``).
+    PROMETHEUS_URL — Prometheus UI (default ``http://localhost:9090``).
+"""
 
 from __future__ import annotations
 

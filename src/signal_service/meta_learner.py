@@ -1,4 +1,15 @@
-"""XGBoost + River meta-learner for system confidence weights."""
+"""XGBoost + River meta-learner for system confidence weights.
+
+Learns which system (A/B/C) to trust under current conditions:
+  - Cold start: equal weights until ``META_MIN_OUTCOMES_TO_LEARN`` resolutions
+  - After enough outcomes: XGBoost batch + River online updates
+  - When System B disabled: ``renormalize_ac()`` splits weight between A and C only
+
+State persisted to ``data/meta_learner/state.json``.
+
+Environment:
+  - ``META_COLD_START_WEIGHTS``, ``META_MIN_OUTCOMES_TO_LEARN``
+"""
 
 from __future__ import annotations
 
@@ -38,6 +49,8 @@ def renormalize_ac(weights: dict[str, float]) -> dict[str, float]:
 
 @dataclass
 class MetaLearner:
+    """Learn A/B/C system weights from outcomes (XGBoost batch + River online)."""
+
     state_path: Path = field(default_factory=lambda: Path("data/meta_learner/state.json"))
     cold_start_weights: dict[str, float] = field(
         default_factory=lambda: _parse_weights(META_COLD_START)

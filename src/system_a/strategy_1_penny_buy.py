@@ -1,4 +1,16 @@
-"""Strategy 1 — 1c Buy (ultra-cheap dislocation on both sides)."""
+"""Strategy 1 — 1c Buy (ultra-cheap dislocation on both sides).
+
+Entry logic:
+  - Wait ``STRAT1_ENTRY_DELAY_SECONDS`` after market opens
+  - Buy UP and DOWN when asks are at or below bid levels (1c/2c/3c)
+  - Cancel unfilled logic: skip if ``remaining <= STRAT1_CANCEL_BEFORE_EXPIRY_SECONDS``
+  - Cap total notional at ``STRAT1_MAX_NOTIONAL_USD``
+
+Connections: ``BaseStrategy`` → ``POST /signal/a/1`` (paper trader, system A).
+
+Environment: STRAT1_BID_LEVELS, STRAT1_ENTRY_DELAY_SECONDS, STRAT1_SHARES_PER_ORDER,
+    STRAT1_CANCEL_BEFORE_EXPIRY_SECONDS, STRAT1_MAX_NOTIONAL_USD.
+"""
 
 from __future__ import annotations
 
@@ -20,6 +32,8 @@ def _parse_levels(raw: str) -> list[float]:
 
 
 class Strategy1PennyBuy(BaseStrategy):
+    """Dual-side penny dislocation buyer (strategy_id=1)."""
+
     def __init__(self, use_mock: bool | None = None) -> None:
         super().__init__(
             StrategyConfig(

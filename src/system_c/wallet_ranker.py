@@ -1,4 +1,10 @@
-"""Rank Polymarket wallets by 30-day PnL."""
+"""Rank Polymarket wallets by 30-day PnL for copytrade targeting.
+
+``WalletRanker.fetch_top(n)`` returns the highest-PnL wallets from the CLOB
+leaderboard API (or mock data in DRY_RUN).
+
+Used by: copytrade.py
+"""
 
 from __future__ import annotations
 
@@ -17,12 +23,16 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class RankedWallet:
+    """Leaderboard row: wallet address, 30d PnL, and rank."""
+
     address: str
     pnl_30d: float
     rank: int
 
 
 class WalletRanker:
+    """Fetch and sort top wallets from ``PolymarketClobClient.get_top_wallets``."""
+
     def __init__(self, clob: PolymarketClobClient | None = None, use_mock: bool = True) -> None:
         self.clob = clob or (MockPolymarketClobClient() if use_mock else HttpPolymarketClobClient())
 

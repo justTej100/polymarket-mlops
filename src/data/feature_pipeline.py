@@ -1,4 +1,14 @@
-"""Real-time feature pipeline: Binance + Polymarket -> Redis."""
+"""Real-time feature pipeline: Binance + Polymarket → Redis.
+
+Long-running process started by supervisor. Each poll cycle:
+  1. Read CLOB order books for BTC/ETH/SOL/XRP
+  2. Build 5-second OHLC bars from mid prices
+  3. Compute MACD, RSI, VWAP → ``pm:features:{asset}``
+  4. Write spot ticks → ``pm:spot:{asset}``, book stats → ``pm:book:{asset}``
+
+Environment:
+  - ``REDIS_URL``, ``FEATURE_PIPELINE_MOCK`` (use mock CLOB), ``FEATURE_BAR_SECONDS``
+"""
 
 from __future__ import annotations
 
@@ -25,12 +35,13 @@ BAR_SECONDS = int(os.getenv("FEATURE_BAR_SECONDS", "5"))
 
 
 def redis_key(prefix: str, asset: str, suffix: str = "") -> str:
+    """Build canonical Redis hash key, e.g. ``pm:features:btc``."""
     base = f"pm:{prefix}:{asset.lower()}"
     return f"{base}:{suffix}" if suffix else base
 
 
 class FeaturePipeline:
-    """Compute MACD, RSI, VWAP, book imbalance and write to Redis."""
+    """Binance ticks + CLOB books → Redis ``pm:spot``, ``pm:book``, ``pm:features`` hashes."""
 
     def __init__(
         self,

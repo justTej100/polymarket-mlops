@@ -1,4 +1,15 @@
-"""System C — mirror top wallet trades with size caps."""
+"""System C — mirror top Polymarket wallet trades with size caps.
+
+``CopytradeBot`` polls top wallets (via WalletRanker), detects new trades,
+and mirrors them to ``POST /signal/c`` with ``COPY_SIZE_MULTIPLIER`` applied.
+
+Trades are only marked "seen" after a successful API response (avoids losing
+signals on startup race when API isn't ready yet).
+
+Environment:
+  - ``COPY_TARGET_COUNT``, ``COPY_SIZE_MULTIPLIER``, ``COPY_MAX_ORDER_USD``,
+    ``COPY_POLL_INTERVAL_MS``, ``DRY_RUN``, ``SIGNAL_SERVICE_URL``
+"""
 
 from __future__ import annotations
 
@@ -27,6 +38,8 @@ DRY_RUN = os.getenv("DRY_RUN", "true").lower() == "true"
 
 
 class CopytradeBot:
+    """Poll ranked wallets and mirror trades to ``POST /signal/c``."""
+
     def __init__(self, use_mock: bool | None = None) -> None:
         mock = use_mock if use_mock is not None else DRY_RUN
         clob = MockPolymarketClobClient() if mock else None

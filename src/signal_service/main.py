@@ -1,4 +1,23 @@
-"""FastAPI signal service — routes, metrics, meta-learner."""
+"""FastAPI signal service — central hub for all trading signals.
+
+HTTP API (port 8000):
+  - ``POST /signal/a/{strategy_id}`` — System A strategy signals
+  - ``POST /signal/c`` — System C copytrade mirrors
+  - ``POST /signal/b`` — System B stub (disabled in v1)
+  - ``POST /outcome`` — record market resolution → PnL + meta-learner
+  - ``GET /benchmark`` — per-system PnL and win rates
+  - ``GET /meta/weights`` — current A/B/C confidence weights
+  - ``GET /metrics`` — Prometheus scrape endpoint
+
+Wires together:
+  - ``BenchmarkStore`` — trade log and stats
+  - ``PaperOrderSimulator`` — DRY_RUN order execution
+  - ``MetaLearner`` — XGBoost + River weight updates
+  - ``FeatureBuilder`` — meta-learner input features from Redis
+
+Environment:
+  - ``RUN_SYSTEM_B`` — if false, meta weights renormalize to A/C only
+"""
 
 from __future__ import annotations
 

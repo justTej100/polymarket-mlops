@@ -1,4 +1,16 @@
-"""Strategy 6 — Martingale / Anti-Martingale around mid prices (~45c)."""
+"""Strategy 6 — Martingale / Anti-Martingale around mid prices (~45c).
+
+Modes (STRAT6_MODE):
+  - martingale: add on dips in ranging market (low BTC vol)
+  - anti_martingale: add on confirmation moves in trending market
+  - auto: pick mode from regime detection via binance pct_change
+
+Connections: ``BaseStrategy`` + Binance regime → ``POST /signal/a/6``.
+
+Environment: STRAT6_MODE, STRAT6_ENTRY_PRICE, STRAT6_ENTRY_RANGE,
+    STRAT6_MARTINGALE_HARD_STOP, STRAT6_ANTI_CONFIRM_MOVE, STRAT6_REGIME_LOOKBACK_SECONDS,
+    STRAT6_MAX_NOTIONAL_USD.
+"""
 
 from __future__ import annotations
 
@@ -16,6 +28,8 @@ logger = logging.getLogger(__name__)
 
 
 class Strategy6Martingale(BaseStrategy):
+    """Martingale dips or anti-martingale adds on UP token (strategy_id=6)."""
+
     def __init__(self, use_mock: bool | None = None) -> None:
         super().__init__(
             StrategyConfig(

@@ -1,4 +1,21 @@
-"""Shared base for System A strategies."""
+"""Shared base for System A rule-based strategies.
+
+Every strategy extends ``BaseStrategy`` and implements either:
+- ``evaluate()`` — returns one signal dict or None, or
+- ``evaluate_signals()`` — returns a list (dual-leg strategies 1, 3, 4, 7).
+
+The main loop (``run()``):
+  1. Fetch active market from Polymarket CLOB
+  2. Call evaluate / evaluate_signals
+  3. POST each signal to FastAPI ``POST /signal/a/{strategy_id}``
+
+Connections:
+  - Reads: ``src.data.binance_ws``, ``src.data.polymarket_clob``
+  - Writes: ``SIGNAL_SERVICE_URL`` (default http://localhost:8000)
+
+Environment:
+  - ``SIGNAL_SERVICE_URL``, ``DRY_RUN`` (mock clients when true)
+"""
 
 from __future__ import annotations
 
@@ -30,6 +47,8 @@ DRY_RUN = os.getenv("DRY_RUN", "true").lower() == "true"
 
 @dataclass
 class StrategyConfig:
+    """Per-strategy runtime settings passed into ``BaseStrategy``."""
+
     strategy_id: int
     asset: str = "BTC"
     poll_interval: float = 2.0
@@ -38,6 +57,8 @@ class StrategyConfig:
 
 
 class BaseStrategy(ABC):
+    """Poll loop: active market → evaluate → POST signal to the signal service."""
+
     def __init__(
         self,
         config: StrategyConfig,
@@ -62,6 +83,7 @@ class BaseStrategy(ABC):
         return None
 
     def send_signal(self, signal: dict[str, Any]) -> dict[str, Any]:
+        """POST one leg to ``POST /signal/a/{strategy_id}``; returns API JSON or error dict."""
         url = f"{SIGNAL_SERVICE_URL}/signal/a/{self.config.strategy_id}"
         payload = {
             "market_id": signal["market_id"],

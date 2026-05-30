@@ -1,4 +1,18 @@
-"""Strategy 9 — Dump-Hedge (sharp move arbitrage)."""
+"""Strategy 9 — Dump-Hedge (sharp spot move → reactive arb).
+
+Entry logic:
+  - Detect BTC dump >= STRAT9_DUMP_PCT_THRESHOLD in STRAT9_DUMP_WINDOW_SECONDS
+  - Buy UP token if ask <= STRAT9_UP_TOKEN_MAX_ENTRY
+  - If up_ask + down_ask <= STRAT9_HEDGE_MAX_COMBINED_COST: hedged arb
+  - Else: smaller naked leg capped at STRAT9_MAX_NOTIONAL_NAKED_USD
+  - Always autonomous (no agent review)
+
+Connections: Binance dump detection + dual CLOB books → ``POST /signal/a/9``.
+
+Environment: STRAT9_DUMP_PCT_THRESHOLD, STRAT9_DUMP_WINDOW_SECONDS, STRAT9_UP_TOKEN_MAX_ENTRY,
+    STRAT9_HEDGE_MAX_COMBINED_COST, STRAT9_FIRST_LEG_SHARES, STRAT9_MAX_NOTIONAL_NAKED_USD,
+    STRAT9_MAX_NOTIONAL_HEDGED_USD, STRAT9_MODE.
+"""
 
 from __future__ import annotations
 
@@ -16,6 +30,8 @@ logger = logging.getLogger(__name__)
 
 
 class Strategy9DumpHedge(BaseStrategy):
+    """Spot dump reactive UP buy with optional hedge leg (strategy_id=9)."""
+
     def __init__(self, use_mock: bool | None = None) -> None:
         super().__init__(
             StrategyConfig(
