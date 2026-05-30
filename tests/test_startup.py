@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from src.startup import wait_for_http_health
+from src.startup import print_service_urls, service_urls, wait_for_http_health
 
 
 def test_wait_for_http_health_succeeds_when_ready():
@@ -28,3 +28,19 @@ def test_wait_for_http_health_times_out():
             )
             is False
         )
+
+
+def test_service_urls_defaults():
+    urls = service_urls()
+    assert urls["api_docs"] == "http://localhost:8000/docs"
+    assert urls["grafana"] == "http://localhost:3000"
+    assert urls["mlflow"] == "http://localhost:5000"
+    assert "targets" in urls["prometheus_targets"]
+
+
+def test_print_service_urls_writes_banner(capsys):
+    print_service_urls()
+    out = capsys.readouterr().out
+    assert "polymarket-mlops" in out
+    assert "http://localhost:8000/docs" in out
+    assert "http://localhost:3000" in out

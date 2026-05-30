@@ -1,4 +1,4 @@
-.PHONY: up down test lint start install setup run venv venv-reset env help
+.PHONY: up down test lint start install setup run venv venv-reset env help urls
 
 VENV ?= .venv
 PYTHON := $(VENV)/bin/python
@@ -10,6 +10,7 @@ help:
 	@echo "  make setup       venv + pip install + .env (no Docker, no app)"
 	@echo "  make start       setup + run supervisor (Docker must already be up)"
 	@echo "  make up / down   Start / stop Docker infrastructure"
+	@echo "  make urls        Print service URLs (API, Grafana, MLflow, Prometheus)"
 	@echo "  make venv-reset  Delete .venv and recreate from scratch"
 	@echo "  make test        Run pytest (auto-uses .venv)"
 	@echo "  make lint        Ruff check (auto-uses .venv)"
@@ -44,11 +45,17 @@ up:
 down:
 	docker compose down
 
+urls: setup
+	@$(PYTHON) -c "from src.startup import print_service_urls; print_service_urls()"
+
 start: setup
+	@echo ">> Starting application (Ctrl+C to stop)..."
 	$(PYTHON) -m src.supervisor
 
 run: setup up
-	@echo ">> Starting application (Ctrl+C to stop)..."
+	@echo ">> Docker infrastructure is up. Starting application..."
+	@echo ">> Service URLs will print below once the API is ready."
+	@echo ""
 	$(PYTHON) -m src.supervisor
 
 test: install

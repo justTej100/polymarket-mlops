@@ -1088,6 +1088,8 @@ make run
 
 No `source .venv/bin/activate` required — Make invokes `.venv/bin/python` directly.
 
+When the API is healthy, the supervisor prints a banner with every URL to open (API docs, benchmark, Grafana, MLflow, Prometheus). Run `make urls` anytime to print it again without restarting.
+
 | Service | URL | Login |
 |---------|-----|-------|
 | Grafana | http://localhost:3000 | admin / admin |
@@ -1120,9 +1122,10 @@ All orders are simulated when `DRY_RUN=true` (default).
 
 | Target | What it does |
 |--------|----------------|
-| `make run` | **Full bootstrap + run** — venv, deps, `.env`, Docker up, supervisor |
+| `make run` | **Full bootstrap + run** — venv, deps, `.env`, Docker up, supervisor (prints URLs when ready) |
 | `make setup` | venv + `pip install` + `.env` only (no Docker, no app) |
 | `make start` | `setup` + supervisor (Docker must already be running) |
+| `make urls` | Print API and dashboard URLs without starting the app |
 | `make up` | Start Docker infrastructure |
 | `make down` | Stop Docker infrastructure |
 | `make venv-reset` | Delete `.venv` and recreate from scratch, then reinstall on next target |

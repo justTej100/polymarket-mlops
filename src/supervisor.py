@@ -11,7 +11,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from src.startup import wait_for_http_health
+from src.startup import print_service_urls, wait_for_http_health
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -83,7 +83,7 @@ def main() -> None:
     if os.getenv("RUN_SYSTEM_C", "true").lower() == "true":
         _spawn([sys.executable, "-m", "src.system_c.copytrade"], "system_c")
 
-    logger.info("Supervisor running — FastAPI at %s/docs", signal_url.rstrip("/"))
+    print_service_urls()
 
     while True:
         for proc in list(PROCS):
