@@ -42,7 +42,9 @@ class Strategy4Preorder(BaseStrategy):
         down_ask = self.clob.get_order_book(market.down_token_id).best_ask
         if up_ask is None or down_ask is None:
             return False
-        return self.stable_min <= up_ask <= self.stable_max and self.stable_min <= down_ask <= self.stable_max
+        up_ok = self.stable_min <= up_ask <= self.stable_max
+        down_ok = self.stable_min <= down_ask <= self.stable_max
+        return up_ok and down_ok
 
     def evaluate_signals(self, market: MarketInfo) -> list[dict[str, Any]]:
         remaining = self.time_remaining_seconds(market)

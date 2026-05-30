@@ -62,7 +62,6 @@ class Strategy6Martingale(BaseStrategy):
 
         mode = self._pick_mode()
         low = self.entry_price - self.entry_range
-        high = self.entry_price + self.entry_range
         adds = self._adds.get(market.market_id, 0)
 
         if mode == "martingale":
