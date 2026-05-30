@@ -1017,29 +1017,12 @@ git clone <your-repo-url> polymarket-mlops && cd polymarket-mlops
 
 If you already have a local checkout, `cd` into it instead (for example `cd ~/pm`).
 
-**2. Create and activate a Python virtual environment**
+**2. Prerequisites on the host**
 
-```bash
-python3 -m venv .venv && source .venv/bin/activate
-```
+- Python **3.11+** (`python3 --version`)
+- Docker (for Redis, MLflow, Prometheus, Grafana)
 
-> Run `source .venv/bin/activate` every time you open a new terminal. Your prompt shows `(.venv)` when active. Requires Python 3.11+.
-
-**3. Install dependencies**
-
-```bash
-make install
-```
-
-This runs `pip install -e ".[dev]"` from `pyproject.toml` (runtime deps plus pytest and ruff).
-
-**4. Create your `.env` file**
-
-```bash
-cp .env.example .env
-```
-
-Edit `.env` only if you need to change defaults. v1 runs in paper mode with strategies 2 and 9 enabled; no API keys are required for that path.
+You do **not** need to create or activate a virtual environment manually. The Makefile creates `.venv` automatically and runs all Python commands through it.
 
 ---
 
@@ -1089,29 +1072,42 @@ LLM and wallet keys (`ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, `POLYMARKET_PRIVATE_
 
 ## Running the project
 
-From the project root with `.venv` activated:
-
-**1. Start infrastructure (Redis, MLflow, Prometheus, Grafana)**
+From the project root — **one command**:
 
 ```bash
-make up
-# equivalent: docker compose up -d
+make run
 ```
+
+`make run` does everything automatically:
+
+1. Creates `.venv` if it does not exist (reuses it if it does)
+2. Runs `pip install -e ".[dev]"` into that venv
+3. Copies `.env.example` → `.env` if `.env` is missing
+4. Starts Docker infrastructure (`docker compose up -d`)
+5. Starts the supervisor (feature pipeline, API, System A, System C)
+
+No `source .venv/bin/activate` required — Make invokes `.venv/bin/python` directly.
 
 | Service | URL | Login |
 |---------|-----|-------|
 | Grafana | http://localhost:3000 | admin / admin |
 | MLflow | http://localhost:5000 | — |
 | Prometheus | http://localhost:9090 | — |
-| FastAPI (after step 2) | http://localhost:8000/docs | — |
+| FastAPI | http://localhost:8000/docs | — |
 
-**2. Start application processes (one command)**
+**Subsequent runs** (after the first `make run`):
+
+```bash
+make run
+```
+
+Or, if Docker is already up and you only need to restart the app:
 
 ```bash
 make start
 ```
 
-`make start` runs `python -m src.supervisor`, which spawns:
+`make start` runs `.venv/bin/python -m src.supervisor`, which spawns:
 
 - Feature pipeline → Redis (mock CLOB when `DRY_RUN=true`)
 - FastAPI signal service on `:8000`
@@ -1122,14 +1118,23 @@ All orders are simulated when `DRY_RUN=true` (default).
 
 **Makefile targets**
 
-| Target | Command |
-|--------|---------|
+| Target | What it does |
+|--------|----------------|
+| `make run` | **Full bootstrap + run** — venv, deps, `.env`, Docker up, supervisor |
+| `make setup` | venv + `pip install` + `.env` only (no Docker, no app) |
+| `make start` | `setup` + supervisor (Docker must already be running) |
 | `make up` | Start Docker infrastructure |
 | `make down` | Stop Docker infrastructure |
-| `make install` | `pip install -e ".[dev]"` |
-| `make start` | Supervisor: pipeline + API + System A + C |
-| `make test` | Run pytest |
-| `make lint` | Ruff check and format check |
+| `make venv-reset` | Delete `.venv` and recreate from scratch, then reinstall on next target |
+| `make test` | Run pytest (auto-uses `.venv`) |
+| `make lint` | Ruff check and format check (auto-uses `.venv`) |
+| `make help` | Print target summary |
+
+To wipe and recreate the virtual environment:
+
+```bash
+make venv-reset && make run
+```
 
 **Prometheus metrics**
 
@@ -1144,11 +1149,13 @@ Then restart: `make down && make up`.
 
 **Manual start (optional)**
 
+After `make setup` (so `.venv` exists):
+
 ```bash
-FEATURE_PIPELINE_MOCK=true python -m src.data.feature_pipeline
-uvicorn src.signal_service.main:app --host 0.0.0.0 --port 8000
-python -m src.system_a.run_all --dry-run
-python -m src.system_c.copytrade
+FEATURE_PIPELINE_MOCK=true .venv/bin/python -m src.data.feature_pipeline
+.venv/bin/uvicorn src.signal_service.main:app --host 0.0.0.0 --port 8000
+.venv/bin/python -m src.system_a.run_all --dry-run
+.venv/bin/python -m src.system_c.copytrade
 ```
 
 **API endpoints**
@@ -1179,7 +1186,7 @@ curl -s http://localhost:8000/benchmark | python3 -m json.tool
 **Stop everything**
 
 ```bash
-# Ctrl+C to stop make start, then:
+# Ctrl+C to stop make run / make start, then:
 make down
 ```
 
@@ -1189,12 +1196,12 @@ Watch the benchmark dashboard at http://localhost:3000.
 
 ## Development
 
-With `.venv` activated from the project root:
+From the project root — no manual venv activation:
 
 ```bash
-make install   # once
-make test      # pytest tests/
-make lint      # ruff check + format check
+make test      # creates .venv if needed, then pytest
+make lint      # creates .venv if needed, then ruff
+make setup     # venv + deps + .env only
 ```
 
 Tests use an in-memory FastAPI client (`tests/conftest.py`); Docker does not need to be running for `make test`.

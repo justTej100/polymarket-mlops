@@ -1,4 +1,42 @@
-.PHONY: up down test lint start install
+.PHONY: up down test lint start install setup run venv venv-reset env help
+
+VENV ?= .venv
+PYTHON := $(VENV)/bin/python
+PIP := $(VENV)/bin/pip
+
+help:
+	@echo "polymarket-mlops — common targets:"
+	@echo "  make run         Create/use .venv, install deps, copy .env, start Docker, run app"
+	@echo "  make setup       venv + pip install + .env (no Docker, no app)"
+	@echo "  make start       setup + run supervisor (Docker must already be up)"
+	@echo "  make up / down   Start / stop Docker infrastructure"
+	@echo "  make venv-reset  Delete .venv and recreate from scratch"
+	@echo "  make test        Run pytest (auto-uses .venv)"
+	@echo "  make lint        Ruff check (auto-uses .venv)"
+
+# Create .venv if missing (Make treats this as a file target).
+$(VENV)/bin/python:
+	@echo ">> Creating virtual environment in $(VENV)..."
+	python3 -m venv $(VENV)
+
+venv: $(VENV)/bin/python
+
+venv-reset:
+	rm -rf $(VENV)
+	$(MAKE) venv
+
+env:
+	@if [ ! -f .env ]; then \
+		cp .env.example .env; \
+		echo ">> Created .env from .env.example"; \
+	fi
+
+install: venv
+	@echo ">> Installing dependencies into $(VENV)..."
+	$(PIP) install -e ".[dev]"
+
+setup: install env
+	@echo ">> Setup complete (.venv ready, deps installed, .env present)."
 
 up:
 	docker compose up -d
@@ -6,15 +44,16 @@ up:
 down:
 	docker compose down
 
-install:
-	pip install -e ".[dev]"
+start: setup
+	$(PYTHON) -m src.supervisor
 
-test:
-	pytest tests/ -v
+run: setup up
+	@echo ">> Starting application (Ctrl+C to stop)..."
+	$(PYTHON) -m src.supervisor
 
-lint:
-	ruff check src tests
-	ruff format --check src tests
+test: install
+	$(VENV)/bin/pytest tests/ -v
 
-start:
-	python -m src.supervisor
+lint: install
+	$(VENV)/bin/ruff check src tests
+	$(VENV)/bin/ruff format --check src tests
