@@ -6,7 +6,11 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-from src.data.polymarket_clob import HttpPolymarketClobClient, MockPolymarketClobClient, PolymarketClobClient
+from src.data.polymarket_clob import (
+    HttpPolymarketClobClient,
+    MockPolymarketClobClient,
+    PolymarketClobClient,
+)
 
 logger = logging.getLogger(__name__)
 

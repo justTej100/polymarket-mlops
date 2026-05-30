@@ -1,7 +1,5 @@
 """Benchmark and paper trader tests."""
 
-from src.signal_service.paper_trader import PaperOrderSimulator
-
 
 def test_record_trade_updates_stats(benchmark):
     benchmark.record_trade(

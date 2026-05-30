@@ -39,7 +39,9 @@ def renormalize_ac(weights: dict[str, float]) -> dict[str, float]:
 @dataclass
 class MetaLearner:
     state_path: Path = field(default_factory=lambda: Path("data/meta_learner/state.json"))
-    cold_start_weights: dict[str, float] = field(default_factory=lambda: _parse_weights(META_COLD_START))
+    cold_start_weights: dict[str, float] = field(
+        default_factory=lambda: _parse_weights(META_COLD_START)
+    )
     min_outcomes: int = META_MIN_OUTCOMES
     outcomes_seen: int = 0
     weights: dict[str, float] = field(default_factory=dict)

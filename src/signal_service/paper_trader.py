@@ -35,7 +35,7 @@ class PaperOrderSimulator:
         self,
         *,
         system: str,
-        strategy_id: int | None,
+        strategy_id: int | None = None,
         market_id: str,
         action: str,
         side: str,

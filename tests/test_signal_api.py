@@ -1,7 +1,5 @@
 """Signal service API integration tests."""
 
-import pytest
-
 
 def test_health(client):
     resp = client.get("/health")

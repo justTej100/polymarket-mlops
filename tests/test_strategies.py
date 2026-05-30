@@ -5,7 +5,7 @@ import time
 import pytest
 
 from src.data.binance_ws import MockBinanceWSClient
-from src.data.polymarket_clob import MockPolymarketClobClient, OrderBook, OrderBookLevel
+from src.data.polymarket_clob import MockPolymarketClobClient
 from src.system_a.strategy_2_sniper import Strategy2Sniper
 from src.system_a.strategy_9_dump_hedge import Strategy9DumpHedge
 from src.system_c.wallet_ranker import WalletRanker

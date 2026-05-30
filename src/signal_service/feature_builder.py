@@ -52,10 +52,34 @@ class FeatureBuilder:
         self.redis = redis.from_url(redis_url, decode_responses=True)
         self.benchmark = benchmark or BenchmarkStore()
 
+    def _redis_get_history(self, key: str) -> list[str]:
+        try:
+            return self.redis.lrange(key, 0, -1)
+        except Exception:
+            return []
+
+    def _redis_hget(self, hash_key: str, field: str) -> str | None:
+        try:
+            return self.redis.hget(hash_key, field)
+        except Exception:
+            return None
+
+    def _redis_hgetall(self, hash_key: str) -> dict[str, str]:
+        try:
+            return self.redis.hgetall(hash_key) or {}
+        except Exception:
+            return {}
+
+    def _redis_get(self, key: str) -> str | None:
+        try:
+            return self.redis.get(key)
+        except Exception:
+            return None
+
     def _btc_volatility_1h(self) -> float:
-        history = self.redis.lrange("pm:btc:spot:history", 0, -1)
+        history = self._redis_get_history("pm:btc:spot:history")
         if len(history) < 2:
-            spot = self.redis.hget("pm:spot:btc", "price")
+            spot = self._redis_hget("pm:spot:btc", "price")
             return 0.01 if spot else 0.0
         prices = [float(p) for p in history]
         if not prices:
@@ -67,13 +91,13 @@ class FeatureBuilder:
         return (var**0.5) / mean
 
     def _book_depth(self) -> float:
-        book = self.redis.hgetall("pm:book:btc") or {}
+        book = self._redis_hgetall("pm:book:btc")
         bid = float(book.get("bid_size", 0) or 0)
         ask = float(book.get("ask_size", 0) or 0)
         return bid + ask
 
     def _minutes_since_b_update(self) -> float:
-        raw = self.redis.get("pm:system_b:last_update_ms")
+        raw = self._redis_get("pm:system_b:last_update_ms")
         if not raw:
             return 999.0
         delta_ms = int(datetime.now(tz=UTC).timestamp() * 1000) - int(raw)

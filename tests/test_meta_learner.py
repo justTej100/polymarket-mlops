@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.signal_service.meta_learner import MetaLearner, renormalize_ac
+from src.signal_service.meta_learner import renormalize_ac
 
 
 def test_cold_start_weights(meta):
