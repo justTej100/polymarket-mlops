@@ -57,10 +57,9 @@ class BaseStrategy(ABC):
     def name(self) -> str:
         raise NotImplementedError
 
-    @abstractmethod
     def evaluate(self, market: MarketInfo) -> dict[str, Any] | None:
-        """Return signal dict or None if no action."""
-        raise NotImplementedError
+        """Return a single signal, or None. Override evaluate_signals for multi-leg."""
+        return None
 
     def send_signal(self, signal: dict[str, Any]) -> dict[str, Any]:
         url = f"{SIGNAL_SERVICE_URL}/signal/a/{self.config.strategy_id}"
@@ -90,15 +89,25 @@ class BaseStrategy(ABC):
             return None
         return max((market.end_time_ms - int(time.time() * 1000)) / 1000, 0)
 
+    def market_age_seconds(self, market: MarketInfo, period_seconds: float = 300.0) -> float | None:
+        if market.end_time_ms is None:
+            return None
+        start_ms = market.end_time_ms - int(period_seconds * 1000)
+        return max((int(time.time() * 1000) - start_ms) / 1000, 0)
+
+    def evaluate_signals(self, market: MarketInfo) -> list[dict[str, Any]]:
+        signal = self.evaluate(market)
+        return [signal] if signal else []
+
     def run_once(self) -> None:
         market = self.active_market()
         if not market:
             logger.debug("[%s] No active market", self.name)
             return
-        signal = self.evaluate(market)
-        if signal:
+        for signal in self.evaluate_signals(market):
             logger.info("[%s] Signal: %s", self.name, signal)
-            self.send_signal(signal)
+            payload = {k: v for k, v in signal.items() if k != "hedge"}
+            self.send_signal(payload)
 
     def run(self) -> None:
         self._running = True

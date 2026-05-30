@@ -55,6 +55,9 @@ class MarketInfo:
     end_time_ms: int | None
     up_token_id: str | None = None
     down_token_id: str | None = None
+    next_market_id: str | None = None
+    next_up_token_id: str | None = None
+    next_down_token_id: str | None = None
 
 
 class PolymarketClobClient(ABC):
@@ -217,6 +220,9 @@ class MockPolymarketClobClient(PolymarketClobClient):
                 end_time_ms=int(time.time() * 1000) + 120_000,
                 up_token_id="up-token",
                 down_token_id="down-token",
+                next_market_id="btc-5m-next",
+                next_up_token_id="next-up-token",
+                next_down_token_id="next-down-token",
             )
         ]
 

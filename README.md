@@ -1044,9 +1044,9 @@ RUN_SYSTEM_A=true
 RUN_SYSTEM_B=false
 RUN_SYSTEM_C=true
 
-RUN_STRAT1=false
+RUN_STRAT1=false   # enable any combination via RUN_STRAT1..9
 RUN_STRAT2=true
-RUN_STRAT3=false   # strategies 3–8 not implemented in v1
+RUN_STRAT3=false
 RUN_STRAT4=false
 RUN_STRAT5=false
 RUN_STRAT6=false
@@ -1113,7 +1113,7 @@ make start
 
 - Feature pipeline → Redis (mock CLOB when `DRY_RUN=true`)
 - FastAPI signal service on `:8000`
-- System A strategies enabled via `RUN_STRAT*` (v1: 2 and 9)
+- System A strategies enabled via `RUN_STRAT*` (all 9 implemented; default: 2 and 9)
 - System C copytrade (when `RUN_SYSTEM_C=true`)
 
 All orders are simulated when `DRY_RUN=true` (default).
@@ -1235,9 +1235,15 @@ polymarket-mlops/
 |   +-- system_a/
 |   |   +-- run_all.py                 # Spawns enabled strategies as subprocesses
 |   |   +-- base_strategy.py
-|   |   +-- strategy_2_sniper.py       # v1
-|   |   +-- strategy_9_dump_hedge.py   # v1
-|   |   # strategy_1, 3–8 — planned (see Roadmap)
+|   |   +-- strategy_1_penny_buy.py
+|   |   +-- strategy_2_sniper.py
+|   |   +-- strategy_3_dual_reversion.py
+|   |   +-- strategy_4_preorder.py
+|   |   +-- strategy_5_cross_market.py
+|   |   +-- strategy_6_martingale.py
+|   |   +-- strategy_7_fibonacci.py
+|   |   +-- strategy_8_momentum.py
+|   |   +-- strategy_9_dump_hedge.py
 |   |
 |   +-- system_c/
 |   |   +-- copytrade.py
@@ -1303,7 +1309,7 @@ polymarket-mlops/
 
 - [x] src/data/ — Binance WS + Polymarket CLOB clients
 - [x] src/data/feature_pipeline.py — real-time features to Redis
-- [ ] All 9 System A strategies — paper trading (v1: strategies 2 + 9)
+- [x] All 9 System A strategies — paper trading
 - [ ] src/system_b/ — LangGraph agent panel with Gemini (v1: stub only)
 - [x] src/system_c/ — top 10 wallet copytrade
 - [x] src/signal_service/ — FastAPI with meta-learner cold start

@@ -29,8 +29,8 @@ STRATEGY_MODULES = {
     9: "src.system_a.strategy_9_dump_hedge",
 }
 
-# v1 implemented strategies
-IMPLEMENTED = {2, 9}
+# All nine strategies implemented
+IMPLEMENTED = set(STRATEGY_MODULES.keys())
 
 
 def enabled_strategies() -> list[int]:
