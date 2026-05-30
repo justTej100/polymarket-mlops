@@ -1009,96 +1009,93 @@ Install [WSL2 with Ubuntu](https://learn.microsoft.com/en-us/windows/wsl/install
 
 ## Installation
 
-**1. Create the project**
+**1. Clone the repo and enter the project directory**
 
 ```bash
-mkdir ~/polymarket-mlops && cd ~/polymarket-mlops && git init
+git clone <your-repo-url> polymarket-mlops && cd polymarket-mlops
 ```
 
-**2. Create and activate Python virtual environment**
+If you already have a local checkout, `cd` into it instead (for example `cd ~/pm`).
+
+**2. Create and activate a Python virtual environment**
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 ```
 
-> Run `source .venv/bin/activate` every time you open a new terminal. Your prompt shows `(.venv)` when active.
+> Run `source .venv/bin/activate` every time you open a new terminal. Your prompt shows `(.venv)` when active. Requires Python 3.11+.
 
-**3. Install all Python dependencies**
+**3. Install dependencies**
 
 ```bash
-pip install pandas numpy websocket-client kafka-python redis scikit-learn xgboost lightgbm river mlflow prefect fastapi uvicorn prometheus-client python-dotenv requests langgraph langchain-core anthropic openai google-generativeai
+make install
 ```
 
-**4. Create your .env file**
+This runs `pip install -e ".[dev]"` from `pyproject.toml` (runtime deps plus pytest and ruff).
+
+**4. Create your `.env` file**
 
 ```bash
 cp .env.example .env
 ```
 
+Edit `.env` only if you need to change defaults. v1 runs in paper mode with strategies 2 and 9 enabled; no API keys are required for that path.
+
 ---
 
 ## Configuration
 
+Copy `.env.example` to `.env` and adjust as needed. Key settings for v1:
+
 ```env
-# LLM provider — Google Gemini is free at aistudio.google.com
-ANTHROPIC_API_KEY=
-OPENAI_API_KEY=
-GOOGLE_API_KEY=
-LLM_PROVIDER=google
+# Infrastructure (defaults match docker-compose)
+REDIS_URL=redis://localhost:6379/0
+MLFLOW_TRACKING_URI=http://localhost:5000
+SIGNAL_SERVICE_URL=http://localhost:8000
 
-# Alpha Vantage — free at alphavantage.co
-ALPHA_VANTAGE_API_KEY=
-
-# Polymarket wallet — use a test wallet while DRY_RUN=true
-POLYMARKET_PRIVATE_KEY=
-POLYMARKET_ADDRESS=
-
-# System toggles
-RUN_SYSTEM_A=true
-RUN_SYSTEM_B=true
-RUN_SYSTEM_C=true
+# Paper trading — leave true until you deliberately go live
 DRY_RUN=true
 
-# System A — individual strategy toggles
-RUN_STRAT1=true
+# v1 defaults: System A (strategies 2+9) and System C on; System B stub off
+RUN_SYSTEM_A=true
+RUN_SYSTEM_B=false
+RUN_SYSTEM_C=true
+
+RUN_STRAT1=false
 RUN_STRAT2=true
-RUN_STRAT3=true
-RUN_STRAT4=true
-RUN_STRAT5=true
-RUN_STRAT6=true
-RUN_STRAT7=true
-RUN_STRAT8=true
+RUN_STRAT3=false   # strategies 3–8 not implemented in v1
+RUN_STRAT4=false
+RUN_STRAT5=false
+RUN_STRAT6=false
+RUN_STRAT7=false
+RUN_STRAT8=false
 RUN_STRAT9=true
 
-# System A mode (per strategy overridable in individual strategy env blocks)
-STRATEGY_A_DEFAULT_MODE=autonomous   # autonomous | reviewed
+# Feature pipeline uses mock Polymarket CLOB when DRY_RUN=true (supervisor sets this)
+FEATURE_PIPELINE_MOCK=true
 
-# System B
-AGENT_RUN_INTERVAL_MINUTES=60
-
-# System C
-COPY_TARGET_COUNT=10
-COPY_SIZE_MULTIPLIER=0.1
-COPY_MAX_ORDER_USD=5
-COPY_POLL_INTERVAL_MS=15000
+# Session risk (paper trader kill switch)
+SESSION_BUDGET_USD=1000
+SESSION_DRAWDOWN_KILL_PCT=0.10
 
 # Meta-learner
 META_COLD_START_WEIGHTS=0.33,0.33,0.33
 META_MIN_OUTCOMES_TO_LEARN=50
 ```
 
+LLM and wallet keys (`ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, `POLYMARKET_PRIVATE_KEY`, etc.) are only needed when you enable System B or live trading. See `.env.example` for the full list and strategy-specific parameters.
+
 ---
 
 ## Running the project
 
-**Step 1 — Start infrastructure**
+From the project root with `.venv` activated:
+
+**1. Start infrastructure (Redis, MLflow, Prometheus, Grafana)**
 
 ```bash
-cd ~/pm && docker compose up -d
-```
-
-```bash
-docker compose ps
+make up
+# equivalent: docker compose up -d
 ```
 
 | Service | URL | Login |
@@ -1106,106 +1103,151 @@ docker compose ps
 | Grafana | http://localhost:3000 | admin / admin |
 | MLflow | http://localhost:5000 | — |
 | Prometheus | http://localhost:9090 | — |
-| FastAPI | http://localhost:8000/docs | — |
+| FastAPI (after step 2) | http://localhost:8000/docs | — |
 
-**Step 2 — Install deps and start everything (one command)**
+**2. Start application processes (one command)**
 
 ```bash
-python3 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
-cp .env.example .env   # edit if needed; DRY_RUN=true by default
 make start
 ```
 
-`make start` launches the feature pipeline, FastAPI signal service (:8000), System A (strategies 2+9 per `RUN_STRAT*`), and System C copytrade — all in paper mode when `DRY_RUN=true`.
+`make start` runs `python -m src.supervisor`, which spawns:
+
+- Feature pipeline → Redis (mock CLOB when `DRY_RUN=true`)
+- FastAPI signal service on `:8000`
+- System A strategies enabled via `RUN_STRAT*` (v1: 2 and 9)
+- System C copytrade (when `RUN_SYSTEM_C=true`)
+
+All orders are simulated when `DRY_RUN=true` (default).
+
+**Makefile targets**
+
+| Target | Command |
+|--------|---------|
+| `make up` | Start Docker infrastructure |
+| `make down` | Stop Docker infrastructure |
+| `make install` | `pip install -e ".[dev]"` |
+| `make start` | Supervisor: pipeline + API + System A + C |
+| `make test` | Run pytest |
+| `make lint` | Ruff check and format check |
+
+**Prometheus metrics**
+
+The signal service runs on the **host** (not in Docker). Prometheus (in Docker) scrapes `host.docker.internal:8000/metrics` per `monitoring/prometheus.yml`. This works on Docker Desktop (macOS/Windows). On **Linux**, add to the `prometheus` service in `docker-compose.yml`:
+
+```yaml
+extra_hosts:
+  - "host.docker.internal:host-gateway"
+```
+
+Then restart: `make down && make up`.
 
 **Manual start (optional)**
 
 ```bash
-python -m src.data.feature_pipeline          # data plane -> Redis
-uvicorn src.signal_service.main:app --port 8000
-python -m src.system_a.run_all --dry-run     # strategies 2 + 9
+FEATURE_PIPELINE_MOCK=true python -m src.data.feature_pipeline
+uvicorn src.signal_service.main:app --host 0.0.0.0 --port 8000
+python -m src.system_a.run_all --dry-run
 python -m src.system_c.copytrade
 ```
 
+**API endpoints**
+
 | Endpoint | Description |
 |----------|-------------|
-| `POST /signal/a/{strategy_id}` | Receive a signal from a specific System A strategy |
+| `GET /health` | Liveness check |
+| `POST /signal/a/{strategy_id}` | Signal from a System A strategy |
 | `POST /signal/b` | System B stub (disabled in v1) |
-| `POST /signal/c` | Receive a mirrored trade from System C |
-| `GET /benchmark` | Current simulated PnL and win rate for all 3 systems |
-| `GET /meta/weights` | Current meta-learner confidence weights |
+| `POST /signal/c` | Mirrored trade from System C |
+| `POST /outcome` | Record market resolution for paper PnL and meta-learner |
+| `GET /benchmark` | Simulated PnL and win rate for all 3 systems |
+| `GET /meta/weights` | Meta-learner confidence weights |
 | `GET /metrics` | Prometheus scrape endpoint |
 
-**Watch the benchmark at http://localhost:3000**
+Example — submit a paper signal and check the benchmark:
 
-**Stop everything:**
+```bash
+curl -s http://localhost:8000/health
+
+curl -s -X POST http://localhost:8000/signal/a/9 \
+  -H 'Content-Type: application/json' \
+  -d '{"market_id":"btc-demo","action":"BUY","side":"UP","price":0.12,"shares":100,"confidence":0.8,"mode":"autonomous"}'
+
+curl -s http://localhost:8000/benchmark | python3 -m json.tool
+```
+
+**Stop everything**
 
 ```bash
 # Ctrl+C to stop make start, then:
-docker compose down
+make down
 ```
+
+Watch the benchmark dashboard at http://localhost:3000.
+
+---
+
+## Development
+
+With `.venv` activated from the project root:
+
+```bash
+make install   # once
+make test      # pytest tests/
+make lint      # ruff check + format check
+```
+
+Tests use an in-memory FastAPI client (`tests/conftest.py`); Docker does not need to be running for `make test`.
 
 ---
 
 ## Project structure
 
+v1 layout (planned components marked with comments):
+
 ```
 polymarket-mlops/
 |
 +-- src/
+|   +-- supervisor.py                  # make start — spawns all host processes
 |   +-- data/
-|   |   +-- feature_pipeline.py        # Binance WS + Polymarket CLOB -> Redis + Kafka
+|   |   +-- feature_pipeline.py        # Binance WS + Polymarket CLOB -> Redis
 |   |   +-- binance_ws.py
 |   |   +-- polymarket_clob.py
+|   |   +-- indicators.py
 |   |
-|   +-- system_a/                      # 9 independent strategies
-|   |   +-- run_all.py                 # Spawns each enabled strategy as subprocess
-|   |   +-- base_strategy.py           # Shared: WS connect, order placement, MLflow log
-|   |   +-- strategy_1_penny_buy.py    # Independent process
-|   |   +-- strategy_2_sniper.py       # Independent process
-|   |   +-- strategy_3_dual_reversion.py
-|   |   +-- strategy_4_preorder.py
-|   |   +-- strategy_5_cross_market.py
-|   |   +-- strategy_6_martingale.py
-|   |   +-- strategy_7_fibonacci.py
-|   |   +-- strategy_8_momentum.py
-|   |   +-- strategy_9_dump_hedge.py   # Always autonomous, always running
-|   |
-|   +-- system_b/
-|   |   +-- agent_loop.py
-|   |   +-- trading_graph.py
-|   |   +-- agents/
-|   |       +-- technical_analyst.py
-|   |       +-- sentiment_analyst.py
-|   |       +-- news_analyst.py
-|   |       +-- fundamentals_analyst.py
-|   |       +-- bull_researcher.py
-|   |       +-- bear_researcher.py
-|   |       +-- trader.py
-|   |       +-- risk_manager.py
-|   |       +-- portfolio_manager.py
+|   +-- system_a/
+|   |   +-- run_all.py                 # Spawns enabled strategies as subprocesses
+|   |   +-- base_strategy.py
+|   |   +-- strategy_2_sniper.py       # v1
+|   |   +-- strategy_9_dump_hedge.py   # v1
+|   |   # strategy_1, 3–8 — planned (see Roadmap)
 |   |
 |   +-- system_c/
 |   |   +-- copytrade.py
 |   |   +-- wallet_ranker.py
 |   |
 |   +-- signal_service/
-|   |   +-- main.py
+|   |   +-- main.py                    # FastAPI routes + Prometheus /metrics
 |   |   +-- meta_learner.py
 |   |   +-- feature_builder.py
 |   |   +-- benchmark.py
+|   |   +-- paper_trader.py
 |   |
-|   +-- pipeline/
-|       +-- retrain_flow.py
+|   # system_b/ — planned (LangGraph agent panel)
+|   # pipeline/retrain_flow.py — planned (Prefect retraining)
 |
++-- tests/                             # pytest suite (make test)
 +-- monitoring/
-|   +-- prometheus.yml
+|   +-- prometheus.yml                 # scrapes host.docker.internal:8000
 |   +-- grafana/dashboards/benchmark.json
+|   +-- grafana/provisioning/datasources/
 |
++-- data/                              # runtime state (benchmark, meta-learner)
++-- Makefile
++-- pyproject.toml
 +-- docker-compose.yml
 +-- .env.example
-+-- .gitignore
 +-- README.md
 ```
 
