@@ -35,9 +35,14 @@ dev = [
     "httpx>=0.27",
 ]
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["src*"]
+[tool.setuptools]
+packages = [
+    "src",
+    "src.data",
+    "src.signal_service",
+    "src.system_a",
+    "src.system_c",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

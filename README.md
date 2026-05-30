@@ -1091,10 +1091,10 @@ META_MIN_OUTCOMES_TO_LEARN=50
 
 ## Running the project
 
-**Step 1 — Start all infrastructure**
+**Step 1 — Start infrastructure**
 
 ```bash
-cd ~/polymarket-mlops && docker compose up -d
+cd ~/pm && docker compose up -d
 ```
 
 ```bash
@@ -1108,73 +1108,41 @@ docker compose ps
 | Prometheus | http://localhost:9090 | — |
 | FastAPI | http://localhost:8000/docs | — |
 
-**Step 2 — Activate your environment (every new terminal)**
+**Step 2 — Install deps and start everything (one command)**
 
 ```bash
-cd ~/polymarket-mlops && source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+cp .env.example .env   # edit if needed; DRY_RUN=true by default
+make start
 ```
 
-**Step 3 — Start the feature pipeline**
+`make start` launches the feature pipeline, FastAPI signal service (:8000), System A (strategies 2+9 per `RUN_STRAT*`), and System C copytrade — all in paper mode when `DRY_RUN=true`.
+
+**Manual start (optional)**
 
 ```bash
-python src/data/feature_pipeline.py
-```
-
-Connects to Binance WebSocket and Polymarket CLOB. Computes MACD/RSI/VWAP/book imbalance in real time. Writes to Redis. Leave running.
-
-**Step 4 — Start the FastAPI signal service**
-
-```bash
-uvicorn src.signal_service.main:app --reload --port 8000
+python -m src.data.feature_pipeline          # data plane -> Redis
+uvicorn src.signal_service.main:app --port 8000
+python -m src.system_a.run_all --dry-run     # strategies 2 + 9
+python -m src.system_c.copytrade
 ```
 
 | Endpoint | Description |
 |----------|-------------|
 | `POST /signal/a/{strategy_id}` | Receive a signal from a specific System A strategy |
-| `POST /signal/b` | Receive a decision from System B |
+| `POST /signal/b` | System B stub (disabled in v1) |
 | `POST /signal/c` | Receive a mirrored trade from System C |
 | `GET /benchmark` | Current simulated PnL and win rate for all 3 systems |
 | `GET /meta/weights` | Current meta-learner confidence weights |
 | `GET /metrics` | Prometheus scrape endpoint |
 
-**Step 5 — Start System A strategies**
-
-Run all enabled strategies:
-
-```bash
-python src/system_a/run_all.py --dry-run
-```
-
-Run individual strategies (each is independent):
-
-```bash
-python src/system_a/strategy_1_penny_buy.py --dry-run
-python src/system_a/strategy_9_dump_hedge.py --dry-run
-```
-
-**Step 6 — Start System B**
-
-```bash
-python src/system_b/agent_loop.py
-```
-
-**Step 7 — Start System C**
-
-```bash
-python src/system_c/copytrade.py
-```
-
-**Step 8 — Watch the benchmark at http://localhost:3000**
-
-**Manual retraining:**
-
-```bash
-python src/pipeline/retrain_flow.py
-```
+**Watch the benchmark at http://localhost:3000**
 
 **Stop everything:**
 
 ```bash
+# Ctrl+C to stop make start, then:
 docker compose down
 ```
 
@@ -1275,16 +1243,16 @@ polymarket-mlops/
 
 ## Roadmap
 
-- [ ] src/data/ — Binance WS + Polymarket CLOB clients
-- [ ] src/data/feature_pipeline.py — real-time features to Redis
-- [ ] All 9 System A strategies — paper trading
-- [ ] src/system_b/ — LangGraph agent panel with Gemini
-- [ ] src/system_c/ — top 10 wallet copytrade
-- [ ] src/signal_service/ — FastAPI with meta-learner cold start
-- [ ] docker-compose.yml — full local stack
-- [ ] Grafana benchmark dashboard
+- [x] src/data/ — Binance WS + Polymarket CLOB clients
+- [x] src/data/feature_pipeline.py — real-time features to Redis
+- [ ] All 9 System A strategies — paper trading (v1: strategies 2 + 9)
+- [ ] src/system_b/ — LangGraph agent panel with Gemini (v1: stub only)
+- [x] src/system_c/ — top 10 wallet copytrade
+- [x] src/signal_service/ — FastAPI with meta-learner cold start
+- [x] docker-compose.yml — full local stack
+- [x] Grafana benchmark dashboard
 - [ ] MLflow outcome logging for all 3 systems
-- [ ] River online learning after each market resolution
+- [x] River online learning after each market resolution
 - [ ] Prefect weekly retraining pipeline
 - [ ] Next.js web frontend — public URL for resume
 - [ ] Kubernetes deployment (k3s)
