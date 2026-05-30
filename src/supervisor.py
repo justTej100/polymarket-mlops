@@ -43,10 +43,10 @@ def main() -> None:
     signal.signal(signal.SIGINT, _shutdown)
     signal.signal(signal.SIGTERM, _shutdown)
 
-    use_mock = os.getenv("FEATURE_PIPELINE_MOCK", "true" if os.getenv("DRY_RUN", "true") == "true" else "false")
-    env = os.environ.copy()
-    env["FEATURE_PIPELINE_MOCK"] = use_mock
-
+    use_mock = os.getenv(
+        "FEATURE_PIPELINE_MOCK",
+        "true" if os.getenv("DRY_RUN", "true") == "true" else "false",
+    )
     pipeline_env = os.environ.copy()
     pipeline_env["FEATURE_PIPELINE_MOCK"] = use_mock
     logger.info("Starting feature_pipeline (mock=%s)", use_mock)
