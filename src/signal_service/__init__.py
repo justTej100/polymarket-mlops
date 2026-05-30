@@ -1,0 +1,1 @@
+"""FastAPI signal service package."""
