@@ -17,6 +17,13 @@ from src.signal_service.benchmark import BenchmarkStore
 from src.signal_service.feature_builder import FeatureBuilder
 from src.signal_service.meta_learner import MetaLearner, renormalize_ac
 from src.signal_service.paper_trader import PaperOrderSimulator
+from src.signal_service.schemas import (
+    BenchmarkResponse,
+    HealthResponse,
+    MetaWeights,
+    MetaWeightsResponse,
+    OutcomeResponse,
+)
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -84,29 +91,29 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(title="Polymarket Signal Service", version="0.1.0", lifespan=lifespan)
 
 
-@app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+@app.get("/health", response_model=HealthResponse)
+def health() -> HealthResponse:
+    return HealthResponse(status="ok")
 
 
-@app.get("/benchmark")
-def get_benchmark() -> dict[str, Any]:
+@app.get("/benchmark", response_model=BenchmarkResponse)
+def get_benchmark() -> BenchmarkResponse:
     _update_metrics()
-    return benchmark.summary()
+    return BenchmarkResponse.model_validate(benchmark.summary())
 
 
-@app.get("/meta/weights")
-def get_meta_weights() -> dict[str, Any]:
+@app.get("/meta/weights", response_model=MetaWeightsResponse)
+def get_meta_weights() -> MetaWeightsResponse:
     feat = features.build()
     raw = meta.predict_weights(feat.as_list())
-    weights = renormalize_ac(raw) if not RUN_SYSTEM_B else raw
-    return {
-        "weights": weights,
-        "outcomes_seen": meta.outcomes_seen,
-        "min_outcomes_to_learn": meta.min_outcomes,
-        "features": feat.as_dict(),
-        "system_b_enabled": RUN_SYSTEM_B,
-    }
+    weights_dict = renormalize_ac(raw) if not RUN_SYSTEM_B else raw
+    return MetaWeightsResponse(
+        weights=MetaWeights(**weights_dict),
+        outcomes_seen=meta.outcomes_seen,
+        min_outcomes_to_learn=meta.min_outcomes,
+        features=feat.as_dict(),
+        system_b_enabled=RUN_SYSTEM_B,
+    )
 
 
 @app.get("/metrics")
@@ -165,8 +172,8 @@ def signal_system_c(payload: SignalPayload) -> dict[str, Any]:
     return result
 
 
-@app.post("/outcome")
-def record_outcome(payload: OutcomePayload) -> dict[str, Any]:
+@app.post("/outcome", response_model=OutcomeResponse)
+def record_outcome(payload: OutcomePayload) -> OutcomeResponse:
     """Record market resolution for paper PnL and meta-learner training."""
     resolved = paper.simulate_resolution(payload.market_id, payload.winning_side)
     winner = payload.winning_system
@@ -177,7 +184,7 @@ def record_outcome(payload: OutcomePayload) -> dict[str, Any]:
         if not RUN_SYSTEM_B:
             weights = renormalize_ac(weights)
     _update_metrics()
-    return {
-        "resolved_trades": len(resolved),
-        "weights": weights,
-    }
+    return OutcomeResponse(
+        resolved_trades=len(resolved),
+        weights=MetaWeights(**weights),
+    )

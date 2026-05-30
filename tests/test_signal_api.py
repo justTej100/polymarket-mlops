@@ -13,6 +13,39 @@ def test_benchmark_endpoint(client):
     data = resp.json()
     assert "systems" in data
     assert set(data["systems"].keys()) == {"a", "b", "c"}
+    for system in ("a", "b", "c"):
+        stats = data["systems"][system]
+        assert set(stats.keys()) == {"pnl_usd", "trades", "wins", "losses", "win_rate"}
+        assert isinstance(stats["pnl_usd"], (int, float))
+    assert "total_trades" in data
+    assert "additionalProp1" not in data
+
+
+def test_benchmark_openapi_schema(client):
+    """Swagger must expose explicit benchmark fields, not generic additionalProp."""
+    schema = client.get("/openapi.json").json()
+    benchmark_props = schema["components"]["schemas"]["BenchmarkResponse"]["properties"]
+    assert "systems" in benchmark_props
+    assert "total_trades" in benchmark_props
+    systems_schema = schema["components"]["schemas"]["BenchmarkSystems"]["properties"]
+    assert set(systems_schema.keys()) == {"a", "b", "c"}
+
+
+def test_benchmark_after_trade(client):
+    client.post(
+        "/signal/c",
+        json={
+            "market_id": "bench-demo",
+            "action": "BUY",
+            "side": "UP",
+            "price": 0.5,
+            "shares": 10,
+            "confidence": 0.5,
+        },
+    )
+    data = client.get("/benchmark").json()
+    assert data["total_trades"] >= 1
+    assert data["systems"]["c"]["trades"] >= 1
 
 
 def test_meta_weights(client):
@@ -21,8 +54,11 @@ def test_meta_weights(client):
     data = resp.json()
     assert "weights" in data
     weights = data["weights"]
+    assert set(weights.keys()) == {"a", "b", "c"}
     assert abs(weights["a"] + weights["c"] - 1.0) < 1e-3
     assert weights["b"] == 0.0
+    assert "outcomes_seen" in data
+    assert "min_outcomes_to_learn" in data
 
 
 def test_metrics_endpoint(client):

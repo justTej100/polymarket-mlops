@@ -7,10 +7,11 @@ import os
 import signal
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 from dotenv import load_dotenv
+
+from src.startup import wait_for_http_health
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -71,7 +72,10 @@ def main() -> None:
         "signal_service",
     )
 
-    time.sleep(2)
+    signal_url = os.getenv("SIGNAL_SERVICE_URL", "http://localhost:8000")
+    if not wait_for_http_health(signal_url, timeout_seconds=60.0):
+        logger.error("Signal service did not become healthy — aborting")
+        _shutdown()
 
     if os.getenv("RUN_SYSTEM_A", "true").lower() == "true":
         _spawn([sys.executable, "-m", "src.system_a.run_all", "--dry-run"], "system_a")
@@ -79,13 +83,15 @@ def main() -> None:
     if os.getenv("RUN_SYSTEM_C", "true").lower() == "true":
         _spawn([sys.executable, "-m", "src.system_c.copytrade"], "system_c")
 
-    logger.info("Supervisor running — FastAPI at http://localhost:8000")
+    logger.info("Supervisor running — FastAPI at %s/docs", signal_url.rstrip("/"))
 
     while True:
         for proc in list(PROCS):
             if proc.poll() is not None:
                 logger.error("Process exited with code %s — shutting down", proc.returncode)
                 _shutdown()
+        import time
+
         time.sleep(5)
 
 

@@ -52,7 +52,6 @@ class CopytradeBot:
         trade_key = trade.get("trade_id", "")
         if trade_key in self._seen_trades:
             return {"status": "skipped", "reason": "duplicate"}
-        self._seen_trades.add(trade_key)
 
         shares = trade["shares"] * COPY_SIZE_MULTIPLIER
         notional = trade["price"] * shares
@@ -72,7 +71,10 @@ class CopytradeBot:
         try:
             resp = self.session.post(url, json=payload, timeout=5)
             resp.raise_for_status()
-            return resp.json()
+            result = resp.json()
+            if result.get("status") == "accepted":
+                self._seen_trades.add(trade_key)
+            return result
         except requests.RequestException as exc:
             logger.warning("Copytrade signal failed: %s", exc)
             return {"status": "error", "detail": str(exc)}

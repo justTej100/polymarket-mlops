@@ -10,6 +10,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from src.signal_service.schemas import BenchmarkResponse, BenchmarkSystems, SystemBenchmarkStats
+
 
 @dataclass
 class TradeRecord:
@@ -161,16 +163,19 @@ class BenchmarkStore:
         return resolved
 
     def summary(self) -> dict[str, Any]:
-        return {
-            "systems": {
-                key: {
-                    "pnl_usd": round(stats.pnl_usd, 4),
-                    "trades": stats.trades,
-                    "wins": stats.wins,
-                    "losses": stats.losses,
-                    "win_rate": round(stats.win_rate, 4),
-                }
-                for key, stats in self.systems.items()
-            },
-            "total_trades": len(self.trades),
-        }
+        systems = BenchmarkSystems(
+            a=self._stats_for("a"),
+            b=self._stats_for("b"),
+            c=self._stats_for("c"),
+        )
+        return BenchmarkResponse(systems=systems, total_trades=len(self.trades)).model_dump()
+
+    def _stats_for(self, key: str) -> SystemBenchmarkStats:
+        stats = self.systems.get(key, SystemStats())
+        return SystemBenchmarkStats(
+            pnl_usd=round(stats.pnl_usd, 4),
+            trades=stats.trades,
+            wins=stats.wins,
+            losses=stats.losses,
+            win_rate=round(stats.win_rate, 4),
+        )

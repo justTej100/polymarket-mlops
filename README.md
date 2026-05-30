@@ -1138,14 +1138,7 @@ make venv-reset && make run
 
 **Prometheus metrics**
 
-The signal service runs on the **host** (not in Docker). Prometheus (in Docker) scrapes `host.docker.internal:8000/metrics` per `monitoring/prometheus.yml`. This works on Docker Desktop (macOS/Windows). On **Linux**, add to the `prometheus` service in `docker-compose.yml`:
-
-```yaml
-extra_hosts:
-  - "host.docker.internal:host-gateway"
-```
-
-Then restart: `make down && make up`.
+The signal service runs on the **host** (not in Docker). Prometheus (in Docker) scrapes `host.docker.internal:8000/metrics`. `docker-compose.yml` includes `extra_hosts: host-gateway` for Linux/WSL. After trades, confirm scrape at http://localhost:9090/targets (`signal_service` should be **UP**).
 
 **Manual start (optional)**
 
@@ -1181,6 +1174,19 @@ curl -s -X POST http://localhost:8000/signal/a/9 \
   -d '{"market_id":"btc-demo","action":"BUY","side":"UP","price":0.12,"shares":100,"confidence":0.8,"mode":"autonomous"}'
 
 curl -s http://localhost:8000/benchmark | python3 -m json.tool
+```
+
+Expected `/benchmark` shape (not the Swagger placeholder `additionalProp1` — click **Execute** in `/docs` to see real data):
+
+```json
+{
+  "systems": {
+    "a": {"pnl_usd": 0.0, "trades": 1, "wins": 0, "losses": 0, "win_rate": 0.0},
+    "b": {"pnl_usd": 0.0, "trades": 0, "wins": 0, "losses": 0, "win_rate": 0.0},
+    "c": {"pnl_usd": 0.0, "trades": 0, "wins": 0, "losses": 0, "win_rate": 0.0}
+  },
+  "total_trades": 1
+}
 ```
 
 **Stop everything**
