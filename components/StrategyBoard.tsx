@@ -16,6 +16,10 @@ function verticalOffset(direction: string, confidence: number): number {
   return 0; // NEUTRAL or BOTH sit on the baseline
 }
 
+function displayDirection(direction: string): string {
+  return direction === "NEUTRAL" ? "NO DECISION" : direction;
+}
+
 export function StrategyBoard({ signals }: { signals: StrategySignalPayload[] }) {
   return (
     <div className="board">
@@ -44,7 +48,7 @@ export function StrategyBoard({ signals }: { signals: StrategySignalPayload[] })
               title={s.signal.note}
             >
               <span className="board__box-name">{s.name}</span>
-              <span className="board__box-dir">{direction}</span>
+              <span className="board__box-dir">{displayDirection(direction)}</span>
             </div>
           );
         })}

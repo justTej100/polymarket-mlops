@@ -10,7 +10,9 @@ export const dynamic = "force-dynamic";
 // in-memory marketState updates -- no client polling, no page refresh.
 export async function GET() {
   const encoder = new TextEncoder();
-  await startPolymarketStream();
+  if (!marketState.getLatest()) {
+    await startPolymarketStream();
+  }
 
   const stream = new ReadableStream({
     start(controller) {

@@ -23,6 +23,10 @@ function formatTime(timestamp: number) {
   }).format(new Date(timestamp));
 }
 
+function displayDirection(direction: string): string {
+  return direction === "NEUTRAL" ? "NO DECISION" : direction;
+}
+
 export function BtcPriceChart({
   snapshots,
   signals = [],
@@ -100,7 +104,7 @@ export function BtcPriceChart({
                 title={signal.signal.note}
               >
                 <span className="price-chart__signal-name">{signal.name}</span>
-                <span className="price-chart__signal-dir">{direction}</span>
+                <span className="price-chart__signal-dir">{displayDirection(direction)}</span>
               </div>
             );
           })}

@@ -1,35 +1,42 @@
-import WebSocket from "ws";
+import { fetchActiveBtcMarket, ActiveMarketMeta } from "./gammaClient";
 import { marketState } from "../worker/marketState";
 import { MarketSnapshot } from "../strategies/types";
 
-// Binance public BTC/USDT trade stream. This is the replacement live data
-// source for the dashboard because it needs no signup and produces real-time
-// BTC prints that can be turned into a 5-minute rolling window.
-const WS_URL = "wss://stream.binance.com:9443/ws/btcusdt@trade";
+// Force ws onto its pure-JS path inside the Next server bundle.
+// The optional native buffer helper can explode under webpacked RSC code.
+process.env.WS_NO_BUFFER_UTIL ??= "1";
+process.env.WS_NO_UTF_8_VALIDATE ??= "1";
 
-const WINDOW_MS = 5 * 60 * 1000;
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const WebSocket = require("ws") as typeof import("ws").default;
+
+// Binance public BTC/USDT trade stream gives spot price.
+const BINANCE_WS_URL = "wss://stream.binance.com:9443/ws/btcusdt@trade";
+
+// Polymarket CLOB websocket gives YES/NO token prices for the active market.
+const POLYMARKET_WS_URL = "wss://ws-subscriptions-clob.polymarket.com/ws/market";
+
 const BASE_RECONNECT_DELAY_MS = 1_000;
 const MAX_RECONNECT_DELAY_MS = 30_000;
 
-let reconnectAttempts = 0;
-let reconnectTimer: NodeJS.Timeout | null = null;
-let connectionStarted = false;
+let binanceReconnectAttempts = 0;
+let polymarketReconnectAttempts = 0;
+let binanceReconnectTimer: NodeJS.Timeout | null = null;
+let polymarketReconnectTimer: NodeJS.Timeout | null = null;
+let binanceConnectionStarted = false;
+let polymarketConnectionStarted = false;
 let bootstrapPromise: Promise<void> | null = null;
 
-interface LiveWindow {
-  windowStartMs: number;
-  priceToBeat: number;
-  conditionId: string;
-}
-
-let currentWindow: LiveWindow | null = null;
+let currentMarket: ActiveMarketMeta | null = null;
+let latestSpotPrice: number | null = null;
+let latestSpotQuantity: number | null = null;
+let latestSpotTimestampMs: number | null = null;
+let latestYesPrice: number | null = null;
+let latestNoPrice: number | null = null;
+let latestPolymarketTimestampMs: number | null = null;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
-}
-
-function getWindowStart(timestampMs: number) {
-  return Math.floor(timestampMs / WINDOW_MS) * WINDOW_MS;
 }
 
 function priceToProbability(currentPrice: number, priceToBeat: number) {
@@ -38,129 +45,199 @@ function priceToProbability(currentPrice: number, priceToBeat: number) {
   return clamp(yes, 0.02, 0.98);
 }
 
-async function fetchBootstrapPrice() {
-  const res = await fetch("https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT", {
-    cache: "no-store",
-  });
-
-  if (!res.ok) {
-    throw new Error(`Binance bootstrap request failed: ${res.status}`);
-  }
-
-  const data = await res.json();
-  const price = Number.parseFloat(data?.price ?? "NaN");
-  if (!Number.isFinite(price) || price <= 0) {
-    throw new Error("Binance bootstrap request returned an invalid price");
-  }
-
-  return price;
+function getCloseTimeMs(): number {
+  return currentMarket ? new Date(currentMarket.closeTime).getTime() : Date.now() + 5 * 60 * 1000;
 }
 
-async function bootstrapWindowIfNeeded() {
-  if (marketState.getLatest()) return;
+function maybeResetForNewMarket(timestampMs: number) {
+  if (!currentMarket) return;
+  const closeTimeMs = new Date(currentMarket.closeTime).getTime();
+  if (timestampMs < closeTimeMs) return;
 
-  const currentPrice = await fetchBootstrapPrice();
-  const now = Date.now();
-  const windowStartMs = getWindowStart(now);
-  currentWindow = {
-    windowStartMs,
-    priceToBeat: currentPrice,
-    conditionId: `binance-btc-5m-${windowStartMs}`,
-  };
-
-  marketState.update(buildSnapshot(now, currentPrice, 0));
+  currentMarket = null;
+  latestSpotPrice = null;
+  latestSpotQuantity = null;
+  latestSpotTimestampMs = null;
+  latestYesPrice = null;
+  latestNoPrice = null;
+  latestPolymarketTimestampMs = null;
+  marketState.reset();
 }
 
-function buildSnapshot(tradeTimeMs: number, currentPrice: number, quantity: number): MarketSnapshot {
-  const windowStartMs = getWindowStart(tradeTimeMs);
-  const closeTimeMs = windowStartMs + WINDOW_MS;
+async function refreshActiveMarket() {
+  const nextMarket = await fetchActiveBtcMarket();
 
-  if (!currentWindow || currentWindow.windowStartMs !== windowStartMs) {
-    currentWindow = {
-      windowStartMs,
-      priceToBeat: currentPrice,
-      conditionId: `binance-btc-5m-${windowStartMs}`,
-    };
+  if (!currentMarket || currentMarket.conditionId !== nextMarket.conditionId) {
+    currentMarket = nextMarket;
+    latestSpotPrice = null;
+    latestSpotQuantity = null;
+    latestSpotTimestampMs = null;
+    latestYesPrice = null;
+    latestNoPrice = null;
+    latestPolymarketTimestampMs = null;
     marketState.reset();
+  } else {
+    currentMarket = nextMarket;
   }
-
-  const yesPrice = priceToProbability(currentPrice, currentWindow.priceToBeat);
-  const noPrice = 1 - yesPrice;
-
-  return {
-    conditionId: currentWindow.conditionId,
-    asset: "BTC",
-    priceToBeat: currentWindow.priceToBeat,
-    currentPrice,
-    yesPrice,
-    noPrice,
-    yesBidAskSpread: 0.0005,
-    secondsRemaining: Math.max(0, Math.round((closeTimeMs - tradeTimeMs) / 1000)),
-    timestamp: tradeTimeMs,
-    volume24h: quantity,
-  };
 }
 
-export async function startBtcStream() {
-  if (connectionStarted) return;
-  connectionStarted = true;
-
+async function ensureActiveMarket() {
   if (!bootstrapPromise) {
-    bootstrapPromise = bootstrapWindowIfNeeded().catch((err) => {
-      console.error("[binance] bootstrap failed", err);
+    bootstrapPromise = (async () => {
+      if (marketState.getLatest() && currentMarket) return;
+      await refreshActiveMarket();
+    })().catch((err) => {
+      console.error("[ws] failed to bootstrap active market", err);
     });
   }
 
   await bootstrapPromise;
-  connect();
+}
+
+function buildSnapshot(timestampMs: number): MarketSnapshot | null {
+  if (!currentMarket) return null;
+
+  const currentPrice = latestSpotPrice ?? currentMarket.priceToBeat;
+  const yesPrice = latestYesPrice ?? priceToProbability(currentPrice, currentMarket.priceToBeat);
+  const noPrice = latestNoPrice ?? 1 - yesPrice;
+
+  return {
+    conditionId: currentMarket.conditionId,
+    asset: "BTC",
+    priceToBeat: currentMarket.priceToBeat,
+    currentPrice,
+    yesPrice,
+    noPrice,
+    yesBidAskSpread:
+      latestYesPrice != null && latestNoPrice != null ? Math.abs(latestYesPrice - latestNoPrice) : 0.0005,
+    secondsRemaining: Math.max(0, Math.round((getCloseTimeMs() - timestampMs) / 1000)),
+    timestamp: timestampMs,
+    volume24h: latestSpotQuantity ?? undefined,
+  };
+}
+
+function emitSnapshot(timestampMs: number) {
+  const snapshot = buildSnapshot(timestampMs);
+  if (!snapshot) return;
+  marketState.update(snapshot);
+}
+
+export async function startBtcStream() {
+  if (binanceConnectionStarted) return;
+  binanceConnectionStarted = true;
+
+  await ensureActiveMarket();
+  connectBinance();
 }
 
 export async function startPolymarketStream() {
-  return startBtcStream();
+  if (polymarketConnectionStarted) return;
+  polymarketConnectionStarted = true;
+
+  await ensureActiveMarket();
+  if (!binanceConnectionStarted) {
+    await startBtcStream();
+  }
+  connectPolymarket();
 }
 
-function connect() {
-  const ws = new WebSocket(WS_URL);
+function connectBinance() {
+  const ws = new WebSocket(BINANCE_WS_URL);
 
   ws.on("open", () => {
-    reconnectAttempts = 0;
-    if (reconnectTimer) {
-      clearTimeout(reconnectTimer);
-      reconnectTimer = null;
+    binanceReconnectAttempts = 0;
+    if (binanceReconnectTimer) {
+      clearTimeout(binanceReconnectTimer);
+      binanceReconnectTimer = null;
     }
   });
 
-  ws.on("message", (raw) => {
+  ws.on("message", (raw: Buffer | ArrayBuffer | Buffer[]) => {
     try {
       const msg = JSON.parse(raw.toString());
-      handleMessage(msg);
+      handleBinanceMessage(msg);
     } catch (err) {
       console.error("[binance] failed to parse trade message", err);
     }
   });
 
   ws.on("close", () => {
-    scheduleReconnect();
+    scheduleBinanceReconnect();
   });
 
-  ws.on("error", (err) => {
+  ws.on("error", (err: unknown) => {
     console.error("[binance] websocket error", err);
     ws.close();
   });
 }
 
-function scheduleReconnect() {
-  const delay = Math.min(BASE_RECONNECT_DELAY_MS * 2 ** reconnectAttempts, MAX_RECONNECT_DELAY_MS);
-  reconnectAttempts++;
-  console.warn(`[binance] reconnecting in ${delay}ms (attempt ${reconnectAttempts})`);
+function connectPolymarket() {
+  if (!currentMarket) return;
 
-  reconnectTimer = setTimeout(() => {
-    reconnectTimer = null;
-    connect();
+  const ws = new WebSocket(POLYMARKET_WS_URL);
+
+  ws.on("open", () => {
+    polymarketReconnectAttempts = 0;
+    if (polymarketReconnectTimer) {
+      clearTimeout(polymarketReconnectTimer);
+      polymarketReconnectTimer = null;
+    }
+
+    ws.send(
+      JSON.stringify({
+        type: "market",
+        assets_ids: [currentMarket!.yesTokenId, currentMarket!.noTokenId],
+      })
+    );
+  });
+
+  ws.on("message", (raw: Buffer | ArrayBuffer | Buffer[]) => {
+    try {
+      const msg = JSON.parse(raw.toString());
+      handlePolymarketMessage(msg);
+    } catch (err) {
+      console.error("[polymarket] failed to parse market message", err);
+    }
+  });
+
+  ws.on("close", () => {
+    schedulePolymarketReconnect();
+  });
+
+  ws.on("error", (err: unknown) => {
+    console.error("[polymarket] websocket error", err);
+    ws.close();
+  });
+}
+
+function scheduleBinanceReconnect() {
+  const delay = Math.min(BASE_RECONNECT_DELAY_MS * 2 ** binanceReconnectAttempts, MAX_RECONNECT_DELAY_MS);
+  binanceReconnectAttempts++;
+  console.warn(`[binance] reconnecting in ${delay}ms (attempt ${binanceReconnectAttempts})`);
+
+  binanceReconnectTimer = setTimeout(() => {
+    binanceReconnectTimer = null;
+    connectBinance();
   }, delay);
 }
 
-function handleMessage(msg: any) {
+function schedulePolymarketReconnect() {
+  const delay = Math.min(BASE_RECONNECT_DELAY_MS * 2 ** polymarketReconnectAttempts, MAX_RECONNECT_DELAY_MS);
+  polymarketReconnectAttempts++;
+  console.warn(`[polymarket] reconnecting in ${delay}ms (attempt ${polymarketReconnectAttempts})`);
+
+  polymarketReconnectTimer = setTimeout(async () => {
+    polymarketReconnectTimer = null;
+    try {
+      await refreshActiveMarket();
+    } catch (err) {
+      console.error("[polymarket] failed to refresh active market before reconnect", err);
+    }
+    connectPolymarket();
+  }, delay);
+}
+
+function handleBinanceMessage(msg: any) {
   const tradePrice = Number.parseFloat(msg.p ?? msg.price ?? "NaN");
   const tradeQuantity = Number.parseFloat(msg.q ?? msg.quantity ?? "1");
   const tradeTimeMs = Number(msg.T ?? msg.tradeTime ?? Date.now());
@@ -169,6 +246,33 @@ function handleMessage(msg: any) {
     return;
   }
 
-  const snapshot = buildSnapshot(tradeTimeMs, tradePrice, Number.isFinite(tradeQuantity) ? tradeQuantity : 1);
-  marketState.update(snapshot);
+  maybeResetForNewMarket(tradeTimeMs);
+  latestSpotPrice = tradePrice;
+  latestSpotQuantity = Number.isFinite(tradeQuantity) ? tradeQuantity : 1;
+  latestSpotTimestampMs = tradeTimeMs;
+
+  emitSnapshot(tradeTimeMs);
+}
+
+function handlePolymarketMessage(msg: any) {
+  maybeResetForNewMarket(Number(msg.ts ?? msg.timestamp ?? Date.now()));
+
+  if (msg.event_type !== "price_change" && msg.event_type !== "book") {
+    return;
+  }
+
+  const yesPrice = Number.parseFloat(msg.yes_price ?? msg.price ?? msg.bid_price ?? "NaN");
+  const noPrice = Number.parseFloat(msg.no_price ?? msg.ask_price ?? "NaN");
+  const timestampMs = Number(msg.ts ?? msg.timestamp ?? msg.E ?? Date.now());
+
+  if (Number.isFinite(yesPrice) && yesPrice > 0) {
+    latestYesPrice = yesPrice;
+  }
+
+  if (Number.isFinite(noPrice) && noPrice > 0) {
+    latestNoPrice = noPrice;
+  }
+
+  latestPolymarketTimestampMs = timestampMs;
+  emitSnapshot(timestampMs);
 }
