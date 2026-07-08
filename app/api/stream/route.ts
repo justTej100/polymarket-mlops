@@ -14,7 +14,10 @@ export async function GET() {
 
   const stream = new ReadableStream({
     start(controller) {
+      let closed = false;
+
       const send = () => {
+        if (closed) return;
         const snapshot = marketState.getLatest();
         if (!snapshot) return;
         const history = marketState.getHistory();
@@ -27,17 +30,17 @@ export async function GET() {
         }));
 
         const payload = JSON.stringify({ snapshot, history, signals });
-        controller.enqueue(encoder.encode(`data: ${payload}\n\n`));
+        try {
+          controller.enqueue(encoder.encode(`data: ${payload}\n\n`));
+        } catch {
+          closed = true;
+          marketState.off("update", send);
+        }
       };
 
       // Send immediately on connect, then on every subsequent tick.
       send();
       marketState.on("update", send);
-
-      // Clean up if the client disconnects.
-      return () => {
-        marketState.off("update", send);
-      };
     },
   });
 
