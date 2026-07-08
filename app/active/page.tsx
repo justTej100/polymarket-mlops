@@ -10,8 +10,14 @@ export default function ActivePage() {
 
   return (
     <>
-      <p className="page-title">Live — Active Polymarket Window</p>
-      <MarketEmbed snapshot={data?.snapshot ?? null} connected={connected} mode="live" />
+      <p className="page-title">Live — BTC / USDT Window</p>
+      <MarketEmbed
+        snapshot={data?.snapshot ?? null}
+        history={data?.history ?? []}
+        signals={data?.signals ?? []}
+        connected={connected}
+        mode="live"
+      />
       <StrategyBoard signals={data?.signals ?? []} />
       <StrategyExplainer signals={data?.signals ?? []} />
     </>

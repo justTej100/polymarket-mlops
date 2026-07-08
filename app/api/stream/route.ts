@@ -1,5 +1,6 @@
 import { marketState } from "@/lib/worker/marketState";
 import { strategies } from "@/lib/strategies";
+import { startPolymarketStream } from "@/lib/polymarket/wsClient";
 
 export const runtime = "nodejs"; // needs a long-lived connection, not edge
 export const dynamic = "force-dynamic";
@@ -9,22 +10,23 @@ export const dynamic = "force-dynamic";
 // in-memory marketState updates -- no client polling, no page refresh.
 export async function GET() {
   const encoder = new TextEncoder();
+  await startPolymarketStream();
 
   const stream = new ReadableStream({
     start(controller) {
       const send = () => {
         const snapshot = marketState.getLatest();
         if (!snapshot) return;
-        const history = { snapshots: marketState.getHistory() };
+        const history = marketState.getHistory();
 
         const signals = strategies.map((s) => ({
           id: s.id,
           name: s.name,
           description: s.description,
-          signal: s.evaluate(snapshot, history),
+          signal: s.evaluate(snapshot, { snapshots: history }),
         }));
 
-        const payload = JSON.stringify({ snapshot, signals });
+        const payload = JSON.stringify({ snapshot, history, signals });
         controller.enqueue(encoder.encode(`data: ${payload}\n\n`));
       };
 

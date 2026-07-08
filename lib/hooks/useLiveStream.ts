@@ -12,6 +12,7 @@ export interface StrategySignalPayload {
 
 export interface StreamPayload {
   snapshot: MarketSnapshot;
+  history: MarketSnapshot[];
   signals: StrategySignalPayload[];
 }
 

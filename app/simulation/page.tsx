@@ -92,7 +92,13 @@ export default function SimulationPage() {
         )}
       </div>
 
-      <MarketEmbed snapshot={currentSnapshot} connected={true} mode="simulation" />
+      <MarketEmbed
+        snapshot={currentSnapshot}
+        history={payload?.snapshots.slice(0, tickIndex + 1) ?? []}
+        signals={currentSignals}
+        connected={true}
+        mode="simulation"
+      />
       <StrategyBoard signals={currentSignals} />
       <StrategyExplainer signals={currentSignals} />
     </>

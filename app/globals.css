@@ -112,16 +112,14 @@ a {
 /* ---------- market embed header ---------- */
 
 .market-embed {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  display: grid;
+  gap: 16px;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 14px 20px;
+  padding: 16px 18px 18px;
   margin-bottom: 20px;
-  flex-wrap: wrap;
-  gap: 12px;
+  box-shadow: 0 24px 50px rgba(0, 0, 0, 0.22);
 }
 
 .market-embed--empty {
@@ -137,10 +135,35 @@ a {
   gap: 10px;
 }
 
+.market-embed__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
 .market-embed__label {
   font-family: var(--mono);
   font-size: 13px;
   color: var(--text-muted);
+}
+
+.market-embed__meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.market-embed__meta-item {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .status-dot {
@@ -171,15 +194,19 @@ a {
 }
 
 .market-embed__stats {
-  display: flex;
-  gap: 24px;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
 }
 
 .market-embed__stat {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel-raised);
 }
 
 .market-embed__stat-label {
@@ -193,6 +220,194 @@ a {
   font-family: var(--mono);
   font-size: 14px;
   font-weight: 600;
+}
+
+.price-chart {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background:
+    linear-gradient(180deg, rgba(240, 180, 41, 0.05), rgba(240, 180, 41, 0)),
+    #0f1318;
+  padding: 14px 14px 10px;
+}
+
+.price-chart__canvas {
+  position: relative;
+}
+
+.price-chart--empty {
+  min-height: 220px;
+  display: grid;
+  place-items: center;
+  font-family: var(--mono);
+  color: var(--text-muted);
+}
+
+.price-chart__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.price-chart__label {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--amber);
+}
+
+.price-chart__subline {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.price-chart__value {
+  font-family: var(--mono);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.price-chart__svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.price-chart__overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 12px;
+  height: 0;
+  z-index: 3;
+}
+
+.price-chart__signal {
+  position: absolute;
+  transform: translateX(-50%);
+  min-width: 108px;
+  max-width: 140px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(11, 14, 17, 0.92);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(6px);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.price-chart__signal-name {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text);
+  line-height: 1.2;
+}
+
+.price-chart__signal-dir {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.price-chart__signal--yes {
+  border-color: var(--yes);
+}
+
+.price-chart__signal--yes .price-chart__signal-dir {
+  color: var(--yes);
+}
+
+.price-chart__signal--no {
+  border-color: var(--no);
+}
+
+.price-chart__signal--no .price-chart__signal-dir {
+  color: var(--no);
+}
+
+.price-chart__signal--both {
+  border-color: var(--both);
+}
+
+.price-chart__signal--both .price-chart__signal-dir {
+  color: var(--both);
+}
+
+.price-chart__signal--neutral {
+  border-color: var(--border);
+}
+
+.price-chart__signal--neutral .price-chart__signal-dir {
+  color: var(--text-muted);
+}
+
+.price-chart__gridline {
+  stroke: rgba(124, 133, 145, 0.2);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.price-chart__baseline {
+  stroke: rgba(240, 180, 41, 0.85);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 5;
+  vector-effect: non-scaling-stroke;
+}
+
+.price-chart__baseline-label {
+  fill: var(--amber);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.price-chart__axis-label {
+  fill: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.price-chart__area {
+  fill: url(#priceLineGradient);
+}
+
+.price-chart__line {
+  fill: none;
+  stroke: var(--amber);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 10px rgba(240, 180, 41, 0.22));
+}
+
+.price-chart__dot {
+  fill: rgba(240, 180, 41, 0.85);
+  stroke: #0f1318;
+  stroke-width: 2;
+}
+
+.price-chart__dot--active {
+  fill: var(--amber);
+}
+
+.price-chart__footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-muted);
 }
 
 /* ---------- board (baseline + zones + strategy boxes) ---------- */
@@ -433,4 +648,54 @@ a {
   font-size: 11px;
   color: var(--text-muted);
   min-width: 90px;
+}
+
+@media (max-width: 900px) {
+  .market-embed__stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .explainer {
+    grid-template-columns: 1fr;
+  }
+
+  .sim-controls {
+    flex-wrap: wrap;
+  }
+
+  .sim-controls input[type="range"] {
+    width: 100%;
+  }
+}
+
+@media (max-width: 640px) {
+  .shell {
+    padding: 20px 14px 64px;
+  }
+
+  .market-embed__top {
+    align-items: flex-start;
+  }
+
+  .market-embed__stats {
+    grid-template-columns: 1fr;
+  }
+
+  .price-chart__header {
+    flex-direction: column;
+  }
+
+  .price-chart__overlay {
+    top: 8px;
+  }
+
+  .price-chart__signal {
+    min-width: 92px;
+    max-width: 114px;
+    padding: 7px 8px;
+  }
+
+  .price-chart__value {
+    font-size: 18px;
+  }
 }
