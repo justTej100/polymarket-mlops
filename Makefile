@@ -1,68 +1,51 @@
-# polymarket-mlops Makefile
-# make run  — full bootstrap: venv, deps, Docker, supervisor (see docs/CODEBASE.md)
-.PHONY: up down test lint start install setup run venv venv-reset env help urls
-
-VENV ?= .venv
-PYTHON := $(VENV)/bin/python
-PIP := $(VENV)/bin/pip
+.PHONY: help install dev worker build start test lint typecheck prisma-generate prisma-migrate clean
 
 help:
-	@echo "polymarket-mlops — common targets:"
-	@echo "  make run         Create/use .venv, install deps, copy .env, start Docker, run app"
-	@echo "  make setup       venv + pip install + .env (no Docker, no app)"
-	@echo "  make start       setup + run supervisor (Docker must already be up)"
-	@echo "  make up / down   Start / stop Docker infrastructure"
-	@echo "  make urls        Print service URLs (API, Grafana, MLflow, Prometheus)"
-	@echo "  make venv-reset  Delete .venv and recreate from scratch"
-	@echo "  make test        Run pytest (auto-uses .venv)"
-	@echo "  make lint        Ruff check (auto-uses .venv)"
-
-# Create .venv if missing (Make treats this as a file target).
-$(VENV)/bin/python:
-	@echo ">> Creating virtual environment in $(VENV)..."
-	python3 -m venv $(VENV)
-
-venv: $(VENV)/bin/python
-
-venv-reset:
-	rm -rf $(VENV)
-	$(MAKE) venv
-
-env:
-	@if [ ! -f .env ]; then \
-		cp .env.example .env; \
-		echo ">> Created .env from .env.example"; \
-	fi
-
-install: venv
-	@echo ">> Installing dependencies into $(VENV)..."
-	$(PIP) install -e ".[dev]"
-
-setup: install env
-	@echo ">> Setup complete (.venv ready, deps installed, .env present)."
-
-up:
-	docker compose up -d
-
-down:
-	docker compose down
-
-urls: setup
-	@$(PYTHON) -c "from src.startup import print_service_urls; print_service_urls()"
-
-start: setup
-	@echo ">> Starting application (Ctrl+C to stop)..."
-	$(PYTHON) -m src.supervisor
-
-run: setup up
-	@echo ">> Docker infrastructure is up. Starting application..."
-	@echo ">> Service URLs will print below once the API is ready."
+	@echo "polymarket-strategies - common targets:"
+	@echo "  make install          Install npm dependencies"
+	@echo "  make dev              Start the Next.js dev server"
+	@echo "  make worker           Start the always-on live market worker"
+	@echo "  make build            Build the Next.js app"
+	@echo "  make start            Start the production Next.js server"
+	@echo "  make test             Run TypeScript checks and strategy/API tests"
+	@echo "  make lint             Run configured static checks"
+	@echo "  make prisma-generate  Generate the Prisma client"
+	@echo "  make prisma-migrate   Run the local Prisma migration flow"
+	@echo "  make clean            Remove local build artifacts"
 	@echo ""
-	$(PYTHON) -m src.supervisor
+	@echo "On Windows, run these through WSL, for example:"
+	@echo "  wsl bash -lc 'cd /home/tj/pm && make test'"
 
-test: install
-	$(VENV)/bin/pytest tests/ -v
+install:
+	npm install
 
-lint: install
-	$(VENV)/bin/ruff check src tests
-	$(VENV)/bin/ruff format --check src tests
+dev:
+	npm run dev
+
+worker:
+	npm run worker
+
+build:
+	npm run build
+
+start:
+	npm run start
+
+typecheck:
+	npm run typecheck
+
+test:
+	npm run typecheck
+	npm run test
+
+lint:
+	npm run lint
+
+prisma-generate:
+	npm run prisma:generate
+
+prisma-migrate:
+	npm run prisma:migrate
+
+clean:
+	rm -rf .next tsconfig.tsbuildinfo

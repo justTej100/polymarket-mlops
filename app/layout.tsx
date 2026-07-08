@@ -1,0 +1,25 @@
+import "./globals.css";
+import { NavLinks } from "@/components/NavLinks";
+
+export const metadata = {
+  title: "Polymarket 9-Strategy Board",
+  description: "9 rule-based strategies watching BTC 5-min Up/Down markets, live and simulated.",
+};
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <body>
+        <div className="shell">
+          <nav className="nav">
+            <span className="nav__brand">
+              STRAT<span>BOARD</span>
+            </span>
+            <NavLinks />
+          </nav>
+          {children}
+        </div>
+      </body>
+    </html>
+  );
+}
