@@ -2,7 +2,7 @@
 
 help:
 	@echo "polymarket-strategies - common targets:"
-	@echo "  make install          Install npm dependencies"
+	@echo "  make install          Install npm dependencies and initialize the DB"
 	@echo "  make dev              Start the Next.js dev server"
 	@echo "  make worker           Start the always-on live market worker"
 	@echo "  make build            Build the Next.js app"
@@ -18,6 +18,11 @@ help:
 
 install:
 	npm install
+	@if [ -n "$$NEON_DATABASE_URL" ]; then \
+		npm run prisma:generate:neon; \
+	else \
+		npm run prisma:migrate; \
+	fi
 
 dev:
 	npm run dev
@@ -48,4 +53,4 @@ prisma-migrate:
 	npm run prisma:migrate
 
 clean:
-	rm -rf .next tsconfig.tsbuildinfo
+	rm -rf .next tsconfig.tsbuildinfo prisma/dev.db prisma/generated

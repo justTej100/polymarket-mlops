@@ -29,11 +29,12 @@ each strategy is doing and why it's currently saying what it's saying.
   store updated on every WS tick, and the dashboard subscribes to
   `/api/stream` (Server-Sent Events) to get pushed updates — that's the "no
   refresh needed" auto-update.
-- **Postgres (Neon) only stores what matters**, not every tick: a `Signal`
+- **The local database only stores what matters**, not every tick: a `Signal`
   row is written only when a strategy's direction *changes*, and each signal
   can now accumulate a trade ledger (`SignalEvent` rows plus realized PnL
   fields) so entries, sells, wins, and losses are all persisted without
-  storing raw ticks.
+  storing raw ticks. If `NEON_DATABASE_URL` is present, the app switches to
+  the Neon/Postgres Prisma client instead of the local SQLite client.
 
 ## Project layout
 
@@ -107,8 +108,8 @@ the live worker, simulation replay, and backtests all evaluate the same logic.
 
 ```bash
 npm install
-cp .env.example .env   # fill in your Neon DATABASE_URL
-npx prisma migrate dev --name init
+cp .env.example .env
+npm run prisma:migrate
 ```
 
 Run the dashboard:
@@ -146,8 +147,11 @@ Useful targets:
 
 - `make dev` starts the Next.js dev server.
 - `make worker` starts the long-lived Polymarket stream worker.
-- `make prisma-generate` generates the Prisma client.
+- `npm run prisma:generate` generates the local SQLite Prisma client.
+- `npm run prisma:generate:neon` generates the Neon/Postgres Prisma client.
 - `make prisma-migrate` runs `prisma migrate dev`.
+- `npm run prisma:migrate` runs the local SQLite migration.
+- `npm run prisma:migrate:neon` runs migrations for the Neon/Postgres schema.
 - `make clean` removes local build artifacts.
 
 ## Known TODOs before this is fully live-trading-real
@@ -168,7 +172,8 @@ three files above by design.
 ## Deploying
 
 1. Push to GitHub.
-2. Create a Neon Postgres project, copy the pooled connection string into
-   `DATABASE_URL` on your host.
-3. Deploy to Railway or Fly.io as an always-on Node service (not Vercel).
+2. If you later want a shared remote database, swap `DATABASE_URL` to a
+  hosted Postgres or SQLite path and regenerate Prisma.
+3. Deploy to Railway or Fly.io as an always-on Node service if you need the
+  live worker running 24/7.
 4. Run `npm run worker` as a second process/service alongside `npm start`.
