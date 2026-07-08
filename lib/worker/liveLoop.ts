@@ -39,13 +39,21 @@ async function onTick() {
 
     if (signal.direction !== "NEUTRAL" && signal.direction !== prevDirection) {
       lastDirectionByStrategy.set(strategy.id, signal.direction);
+      const entryCostUsd =
+        signal.direction === "BOTH"
+          ? snapshot.yesPrice + snapshot.noPrice
+          : signal.direction === "YES"
+            ? snapshot.yesPrice
+            : snapshot.noPrice;
+
       await db.signal.create({
         data: {
           marketId: market.id,
           strategyId: strategy.id,
           direction: signal.direction,
           confidence: signal.confidence,
-          entryPrice: signal.direction === "YES" ? snapshot.yesPrice : snapshot.noPrice,
+          entryPrice: entryCostUsd,
+          entryCostUsd,
         },
       });
       console.log(`[signal] ${strategy.id} -> ${signal.direction} (${signal.note})`);

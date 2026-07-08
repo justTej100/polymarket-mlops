@@ -28,20 +28,45 @@ model Market {
 
 // One row per strategy signal fired for a given market window (live mode).
 model Signal {
-  id           String   @id @default(cuid())
-  marketId     String
-  market       Market   @relation(fields: [marketId], references: [id])
-  strategyId   String   // e.g. "lottery-ticket"
-  direction    String   // "YES" | "NO" | "NEUTRAL"
-  confidence   Float?
-  entryPrice   Float?
-  createdAt    DateTime @default(now())
+  id             String          @id @default(cuid())
+  marketId       String
+  market         Market          @relation(fields: [marketId], references: [id])
+  strategyId     String          // e.g. "lottery-ticket"
+  direction      String          // "YES" | "NO" | "NEUTRAL"
+  confidence     Float?
+  entryPrice     Float?
+  entryCostUsd   Float?
+  createdAt      DateTime        @default(now())
 
-  // Filled in once the market resolves, so we can compute win rate per strategy.
-  won          Boolean?
+  // Filled in once the market resolves, so we can compute win rate and PnL.
+  won            Boolean?
+  closedAt       DateTime?
+  exitPrice      Float?
+  realizedPnlUsd Float?
+  exitReason     String?
+  result         String?
+  events         SignalEvent[]
 
   @@index([strategyId])
   @@index([marketId])
+}
+
+// Individual fill/exit/win/loss events for a strategy signal.
+// This keeps a proper trade ledger so each strategy can record entries,
+// partial sells, final wins, and losses without overwriting the original signal.
+model SignalEvent {
+  id             String   @id @default(cuid())
+  signalId       String
+  signal         Signal   @relation(fields: [signalId], references: [id], onDelete: Cascade)
+  eventType      String   // ENTRY | SELL | WIN | LOSS | CLOSE
+  price          Float?
+  quantity       Float?
+  realizedPnlUsd Float?   @default(0)
+  note           String?
+  createdAt      DateTime @default(now())
+
+  @@index([signalId])
+  @@index([eventType])
 }
 
 // One row per backtest run, so simulation results are comparable across runs.

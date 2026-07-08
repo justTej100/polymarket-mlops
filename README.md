@@ -30,9 +30,10 @@ each strategy is doing and why it's currently saying what it's saying.
   `/api/stream` (Server-Sent Events) to get pushed updates — that's the "no
   refresh needed" auto-update.
 - **Postgres (Neon) only stores what matters**, not every tick: a `Signal`
-  row is written only when a strategy's direction *changes*, so you can
-  compare strategies' win rates over days without the DB filling up with
-  noise.
+  row is written only when a strategy's direction *changes*, and each signal
+  can now accumulate a trade ledger (`SignalEvent` rows plus realized PnL
+  fields) so entries, sells, wins, and losses are all persisted without
+  storing raw ticks.
 
 ## Project layout
 
@@ -47,8 +48,60 @@ app/active/           live page
 app/simulation/       simulation page
 app/api/stream/       SSE endpoint for the live page
 app/api/backtest/     returns a historical/synthetic window + backtest results
-prisma/schema.prisma  Market / Signal / BacktestRun tables
+prisma/schema.prisma  Market / Signal / SignalEvent / BacktestRun tables
 ```
+
+## System A — 9 Independent Rule-Based Strategies
+
+The dashboard still centers on the same nine strategies. Each one is a
+separate rule-based signal with its own edge, and the UI plus database now
+track both the signal and its realized outcome.
+
+### Strategy 1 — Lottery Ticket
+
+Buys the cheap side when it gets deeply out of the money. The edge comes from
+small entries with large payoff asymmetry if the late-window move reverses.
+
+### Strategy 2 — Near-Certain Snipe
+
+Looks for a nearly-decided market near expiry and buys the winning side when
+it still trades below the terminal payoff.
+
+### Strategy 3 — Price Arbitrage
+
+Watches for YES + NO compressing below $1 and buys both sides when the combined
+cost leaves room for a guaranteed edge.
+
+### Strategy 4 — Fibonacci Retracement
+
+Finds the recent swing high/low and looks for entries around retracement levels
+where the token price is likely to continue its move.
+
+### Strategy 5 — MACD Momentum
+
+Uses short-window MACD on the live BTC price to catch fresh momentum shifts.
+
+### Strategy 6 — RSI Momentum
+
+Uses RSI to spot oversold or overbought stretches and fade them when the
+window still has enough time left.
+
+### Strategy 7 — VWAP Momentum
+
+Compares current price against the window VWAP and leans with sustained
+strength above or below that anchor.
+
+### Strategy 8 — Momentum Stacking
+
+Requires multiple momentum indicators to line up before it becomes directional.
+
+### Strategy 9 — Dump-Hedge Arbitrage
+
+Reactively fades sharp BTC dumps or pumps and tries to hedge the mispricing
+before the book fully catches up.
+
+Each strategy is still the same `(snapshot, history) => Signal` interface, so
+the live worker, simulation replay, and backtests all evaluate the same logic.
 
 ## Setup
 

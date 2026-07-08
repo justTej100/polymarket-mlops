@@ -10,8 +10,10 @@ export interface BacktestResult {
   strategyId: string;
   trades: number;
   wins: number;
+  losses: number;
   winRate: number;
-  history: { timestamp: number; direction: string; confidence: number }[];
+  pnlUsd: number;
+  history: { timestamp: number; direction: string; confidence: number; pnlUsd?: number }[];
 }
 
 /**
@@ -25,6 +27,8 @@ export function runBacktestOnWindow(
   return strategies.map((strategy) => {
     let trades = 0;
     let wins = 0;
+    let losses = 0;
+    let pnlUsd = 0;
     const history: BacktestResult["history"] = [];
     let lastDirection: string | null = null;
 
@@ -32,11 +36,24 @@ export function runBacktestOnWindow(
       const snapshot = snapshots[i];
       const pastHistory = { snapshots: snapshots.slice(0, i + 1) };
       const signal = strategy.evaluate(snapshot, pastHistory);
+      const entryCostUsd =
+        signal.direction === "BOTH"
+          ? snapshot.yesPrice + snapshot.noPrice
+          : signal.direction === "YES"
+            ? snapshot.yesPrice
+            : snapshot.noPrice;
+      const tradePnlUsd =
+        signal.direction !== "NEUTRAL" && signal.direction !== lastDirection
+          ? signal.direction === "BOTH" || signal.direction === finalOutcome
+            ? 1 - entryCostUsd
+            : -entryCostUsd
+          : 0;
 
       history.push({
         timestamp: snapshot.timestamp,
         direction: signal.direction,
         confidence: signal.confidence,
+        pnlUsd: tradePnlUsd,
       });
 
       // Count it as a "trade" the moment the strategy changes into a
@@ -44,8 +61,11 @@ export function runBacktestOnWindow(
       // direction changes, so live and backtest counts are comparable).
       if (signal.direction !== "NEUTRAL" && signal.direction !== lastDirection) {
         trades++;
+        pnlUsd += tradePnlUsd;
         if (signal.direction === "BOTH" || signal.direction === finalOutcome) {
           wins++; // arbitrage ("BOTH") always wins by construction
+        } else {
+          losses++;
         }
       }
       if (signal.direction !== "NEUTRAL") lastDirection = signal.direction;
@@ -55,7 +75,9 @@ export function runBacktestOnWindow(
       strategyId: strategy.id,
       trades,
       wins,
+      losses,
       winRate: trades > 0 ? wins / trades : 0,
+      pnlUsd,
       history,
     };
   });
@@ -68,20 +90,22 @@ export function runBacktestOnWindow(
 export function runBacktestOnManyWindows(
   windows: { snapshots: MarketSnapshot[]; finalOutcome: "YES" | "NO" }[]
 ) {
-  const totals = new Map<string, { trades: number; wins: number }>();
+  const totals = new Map<string, { trades: number; wins: number; losses: number; pnlUsd: number }>();
 
   for (const window of windows) {
     const results = runBacktestOnWindow(window.snapshots, window.finalOutcome);
     for (const r of results) {
-      const prev = totals.get(r.strategyId) ?? { trades: 0, wins: 0 };
+      const prev = totals.get(r.strategyId) ?? { trades: 0, wins: 0, losses: 0, pnlUsd: 0 };
       totals.set(r.strategyId, {
         trades: prev.trades + r.trades,
         wins: prev.wins + r.wins,
+        losses: prev.losses + r.losses,
+        pnlUsd: prev.pnlUsd + r.pnlUsd,
       });
     }
   }
 
-  const summary: Record<string, { trades: number; wins: number; winRate: number }> = {};
+  const summary: Record<string, { trades: number; wins: number; losses: number; winRate: number; pnlUsd: number }> = {};
   for (const [strategyId, t] of totals) {
     summary[strategyId] = { ...t, winRate: t.trades > 0 ? t.wins / t.trades : 0 };
   }
