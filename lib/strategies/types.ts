@@ -30,6 +30,8 @@ export interface MarketSnapshot {
   /** True while the strike price for this window hasn't been confirmed yet. */
   priceToBeatPending?: boolean;
   question?: string;        // e.g. "Bitcoin Up or Down - July 22, 2:30AM-2:35AM ET"
+  /** Chainlink ETH/USD price at this moment -- used by cross-market lead-lag. */
+  ethPrice?: number;
 }
 
 /** Rolling history a strategy can look back over (most recent last). */
@@ -44,7 +46,7 @@ export interface Signal {
 }
 
 export interface Strategy {
-  id: string;           // stable slug, e.g. "lottery-ticket"
+  id: string;           // stable slug, e.g. "sniper-99c"
   name: string;         // display name
   description: string;  // shown in the explainer panel under the chart
   evaluate: (snapshot: MarketSnapshot, history: MarketHistory) => Signal;

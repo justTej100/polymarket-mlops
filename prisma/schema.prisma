@@ -30,7 +30,7 @@ model Signal {
   id             String          @id @default(cuid())
   marketId       String
   market         Market          @relation(fields: [marketId], references: [id])
-  strategyId     String          // e.g. "lottery-ticket"
+  strategyId     String          // e.g. "sniper-99c"
   direction      String          // "YES" | "NO" | "NEUTRAL"
   confidence     Float?
   entryPrice     Float?

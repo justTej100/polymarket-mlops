@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { MarketSnapshot, Signal } from "@/lib/strategies/types";
+import type { PaperPublicState } from "@/lib/worker/paperTrading";
+import type { CopyStatus } from "@/lib/trading/copyTrader";
 
 export interface StrategySignalPayload {
   id: string;
@@ -14,12 +16,16 @@ export interface StreamPayload {
   snapshot: MarketSnapshot;
   history: MarketSnapshot[];
   signals: StrategySignalPayload[];
+  paper: PaperPublicState | null;
+  copy: CopyStatus | null;
 }
 
 interface ServerMessage {
   snapshot: MarketSnapshot;
   history?: MarketSnapshot[];
   signals: StrategySignalPayload[];
+  paper?: PaperPublicState;
+  copy?: CopyStatus;
 }
 
 const HISTORY_LIMIT = 400;
@@ -68,7 +74,13 @@ export function useLiveStream() {
         }
 
         conditionIdRef.current = snapshot.conditionId;
-        setData({ snapshot, history: [...historyRef.current], signals: msg.signals });
+        setData({
+          snapshot,
+          history: [...historyRef.current],
+          signals: msg.signals,
+          paper: msg.paper ?? null,
+          copy: msg.copy ?? null,
+        });
         setConnected(true);
       } catch {
         // ignore malformed payloads

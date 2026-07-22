@@ -1,6 +1,8 @@
 import { marketState } from "@/lib/worker/marketState";
 import { strategies } from "@/lib/strategies";
 import { startPolymarketStream } from "@/lib/polymarket/wsClient";
+import { paperEngine } from "@/lib/worker/paperTrading";
+import { copyTrader } from "@/lib/trading/copyTrader";
 
 export const runtime = "nodejs"; // needs a long-lived connection, not edge
 export const dynamic = "force-dynamic";
@@ -32,7 +34,12 @@ function evaluatePayload(includeHistory: boolean): string | null {
     signal: s.evaluate(snapshot, { snapshots: history }),
   }));
 
-  return JSON.stringify(includeHistory ? { snapshot, history, signals } : { snapshot, signals });
+  const paper = paperEngine.getPublicState(snapshot);
+  const copy = copyTrader.getStatus();
+
+  return JSON.stringify(
+    includeHistory ? { snapshot, history, signals, paper, copy } : { snapshot, signals, paper, copy }
+  );
 }
 
 function broadcast() {

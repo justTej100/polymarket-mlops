@@ -47,5 +47,10 @@ class MarketStateStore extends EventEmitter {
   }
 }
 
-// Singleton -- one shared instance across the whole worker process.
-export const marketState = new MarketStateStore();
+// Singleton -- one shared instance across the whole process. Stored on
+// globalThis because Next.js dev gives each route bundle its own module
+// instances; without this, /api/stream and /api/copy would each get their
+// own (conflicting) store.
+const globalForMarketState = globalThis as unknown as { pmMarketState?: MarketStateStore };
+export const marketState = globalForMarketState.pmMarketState ?? new MarketStateStore();
+globalForMarketState.pmMarketState = marketState;

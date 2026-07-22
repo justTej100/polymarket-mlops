@@ -1,5 +1,6 @@
 import { ActiveMarketMeta, fetchBtcMarketForWindow, windowStartSec } from "./gammaClient";
 import { marketState } from "../worker/marketState";
+import { paperEngine } from "../worker/paperTrading";
 import { MarketSnapshot } from "../strategies/types";
 
 // Force ws onto its pure-JS path inside the Next server bundle.
@@ -35,23 +36,49 @@ interface TokenQuote {
   ask: number | null;
 }
 
-let started = false;
-let startPromise: Promise<void> | null = null;
+interface PipelineState {
+  started: boolean;
+  startPromise: Promise<void> | null;
+  currentMarket: ActiveMarketMeta | null;
+  priceToBeat: number | null;
+  priceToBeatPending: boolean;
+  chainlinkTicks: PriceTick[];
+  latestChainlink: PriceTick | null;
+  latestEth: PriceTick | null;
+  quotes: Map<string, TokenQuote>; // tokenId -> best bid/ask
+  rtdsSocket: import("ws").default | null;
+  ethSocket: import("ws").default | null;
+  clobSocket: import("ws").default | null;
+  rtdsReconnectAttempts: number;
+  ethReconnectAttempts: number;
+  clobReconnectAttempts: number;
+  rolloverTimer: NodeJS.Timeout | null;
+}
 
-let currentMarket: ActiveMarketMeta | null = null;
-let priceToBeat: number | null = null;
-let priceToBeatPending = false;
-
-const chainlinkTicks: PriceTick[] = [];
-let latestChainlink: PriceTick | null = null;
-
-const quotes = new Map<string, TokenQuote>(); // tokenId -> best bid/ask
-
-let rtdsSocket: import("ws").default | null = null;
-let clobSocket: import("ws").default | null = null;
-let rtdsReconnectAttempts = 0;
-let clobReconnectAttempts = 0;
-let rolloverTimer: NodeJS.Timeout | null = null;
+// The whole pipeline lives on globalThis: Next.js dev builds a separate
+// module instance per route bundle, and without this both /api/stream and
+// anything else importing this file would each start their own pipeline --
+// duplicate sockets, duplicate paper trades, double window settlements.
+const globalForPipeline = globalThis as unknown as { pmPipeline?: PipelineState };
+const S: PipelineState = globalForPipeline.pmPipeline ?? {
+  started: false,
+  startPromise: null,
+  currentMarket: null,
+  priceToBeat: null,
+  priceToBeatPending: false,
+  chainlinkTicks: [],
+  latestChainlink: null,
+  latestEth: null,
+  quotes: new Map(),
+  rtdsSocket: null,
+  ethSocket: null,
+  clobSocket: null,
+  rtdsReconnectAttempts: 0,
+  ethReconnectAttempts: 0,
+  clobReconnectAttempts: 0,
+  rolloverTimer: null,
+};
+globalForPipeline.pmPipeline = S;
 
 function log(scope: string, ...args: unknown[]) {
   console.log(`[${scope}]`, ...args);
@@ -63,14 +90,14 @@ function log(scope: string, ...args: unknown[]) {
 
 function recordChainlinkTick(tick: PriceTick) {
   if (!Number.isFinite(tick.value) || tick.value <= 0) return;
-  const last = chainlinkTicks[chainlinkTicks.length - 1];
+  const last = S.chainlinkTicks[S.chainlinkTicks.length - 1];
   if (last && tick.timestampMs <= last.timestampMs) return; // keep sorted, dedupe
-  chainlinkTicks.push(tick);
-  if (chainlinkTicks.length > PRICE_BUFFER_LIMIT) {
-    chainlinkTicks.splice(0, chainlinkTicks.length - PRICE_BUFFER_LIMIT);
+  S.chainlinkTicks.push(tick);
+  if (S.chainlinkTicks.length > PRICE_BUFFER_LIMIT) {
+    S.chainlinkTicks.splice(0, S.chainlinkTicks.length - PRICE_BUFFER_LIMIT);
   }
-  if (!latestChainlink || tick.timestampMs >= latestChainlink.timestampMs) {
-    latestChainlink = tick;
+  if (!S.latestChainlink || tick.timestampMs >= S.latestChainlink.timestampMs) {
+    S.latestChainlink = tick;
   }
 }
 
@@ -81,24 +108,24 @@ function recordChainlinkTick(tick: PriceTick) {
  * and flag the snapshot so the UI can show it as provisional.
  */
 function resolvePriceToBeat() {
-  if (!currentMarket || priceToBeat !== null && !priceToBeatPending) return;
+  if (!S.currentMarket || (S.priceToBeat !== null && !S.priceToBeatPending)) return;
 
-  const openMs = currentMarket.openTimeMs;
-  const firstAtOrAfterOpen = chainlinkTicks.find((t) => t.timestampMs >= openMs);
+  const openMs = S.currentMarket.openTimeMs;
+  const firstAtOrAfterOpen = S.chainlinkTicks.find((t) => t.timestampMs >= openMs);
 
   if (firstAtOrAfterOpen && firstAtOrAfterOpen.timestampMs <= openMs + 5_000) {
-    priceToBeat = firstAtOrAfterOpen.value;
-    priceToBeatPending = false;
+    S.priceToBeat = firstAtOrAfterOpen.value;
+    S.priceToBeatPending = false;
     return;
   }
 
-  if (priceToBeat === null && firstAtOrAfterOpen) {
+  if (S.priceToBeat === null && firstAtOrAfterOpen) {
     // We have post-open ticks but missed the boundary itself -- best effort.
-    priceToBeat = firstAtOrAfterOpen.value;
-    priceToBeatPending = firstAtOrAfterOpen.timestampMs > openMs + 5_000;
-  } else if (priceToBeat === null && latestChainlink) {
-    priceToBeat = latestChainlink.value;
-    priceToBeatPending = true;
+    S.priceToBeat = firstAtOrAfterOpen.value;
+    S.priceToBeatPending = firstAtOrAfterOpen.timestampMs > openMs + 5_000;
+  } else if (S.priceToBeat === null && S.latestChainlink) {
+    S.priceToBeat = S.latestChainlink.value;
+    S.priceToBeatPending = true;
   }
 }
 
@@ -113,10 +140,10 @@ function midpoint(quote: TokenQuote | undefined): number | null {
 }
 
 function buildSnapshot(timestampMs: number): MarketSnapshot | null {
-  if (!currentMarket || !latestChainlink || priceToBeat === null) return null;
+  if (!S.currentMarket || !S.latestChainlink || S.priceToBeat === null) return null;
 
-  const upQuote = quotes.get(currentMarket.upTokenId);
-  const downQuote = quotes.get(currentMarket.downTokenId);
+  const upQuote = S.quotes.get(S.currentMarket.upTokenId);
+  const downQuote = S.quotes.get(S.currentMarket.downTokenId);
   const upMid = midpoint(upQuote);
   const downMid = midpoint(downQuote);
 
@@ -126,30 +153,38 @@ function buildSnapshot(timestampMs: number): MarketSnapshot | null {
   const noPrice = downMid ?? 1 - yesPrice;
 
   return {
-    conditionId: currentMarket.conditionId,
+    conditionId: S.currentMarket.conditionId,
     asset: "BTC",
-    priceToBeat,
-    currentPrice: latestChainlink.value,
+    priceToBeat: S.priceToBeat,
+    currentPrice: S.latestChainlink.value,
     yesPrice,
     noPrice,
     yesBidAskSpread:
       upQuote && upQuote.bid !== null && upQuote.ask !== null
         ? Math.max(0, upQuote.ask - upQuote.bid)
         : 0.01,
-    secondsRemaining: Math.max(0, Math.round((currentMarket.closeTimeMs - timestampMs) / 1000)),
+    secondsRemaining: Math.max(0, Math.round((S.currentMarket.closeTimeMs - timestampMs) / 1000)),
     timestamp: timestampMs,
     upBid: upQuote?.bid ?? undefined,
     upAsk: upQuote?.ask ?? undefined,
     downBid: downQuote?.bid ?? undefined,
     downAsk: downQuote?.ask ?? undefined,
-    priceToBeatPending: priceToBeatPending || undefined,
-    question: currentMarket.question,
+    priceToBeatPending: S.priceToBeatPending || undefined,
+    question: S.currentMarket.question,
+    ethPrice: S.latestEth?.value,
   };
 }
 
 function emitSnapshot(timestampMs = Date.now()) {
   const snapshot = buildSnapshot(timestampMs);
-  if (snapshot) marketState.update(snapshot);
+  if (!snapshot) return;
+  marketState.update(snapshot);
+  paperEngine.onSnapshot(snapshot, marketState.getHistory());
+}
+
+/** The market currently being streamed (token ids etc.), if any. */
+export function getCurrentMarket(): ActiveMarketMeta | null {
+  return S.currentMarket;
 }
 
 // ---------------------------------------------------------------------------
@@ -159,10 +194,10 @@ function emitSnapshot(timestampMs = Date.now()) {
 async function activateWindow(startSec: number, attempt = 0): Promise<void> {
   try {
     const market = await fetchBtcMarketForWindow(startSec);
-    currentMarket = market;
-    priceToBeat = null;
-    priceToBeatPending = false;
-    quotes.clear();
+    S.currentMarket = market;
+    S.priceToBeat = null;
+    S.priceToBeatPending = false;
+    S.quotes.clear();
     marketState.reset();
     resolvePriceToBeat();
     log("market", `active window ${market.slug} (${market.question})`);
@@ -181,13 +216,24 @@ async function activateWindow(startSec: number, attempt = 0): Promise<void> {
 }
 
 function watchForRollover() {
-  if (rolloverTimer) return;
-  rolloverTimer = setInterval(() => {
-    if (!currentMarket) return;
-    if (Date.now() >= currentMarket.closeTimeMs) {
+  if (S.rolloverTimer) return;
+  let rollingOver = false;
+  S.rolloverTimer = setInterval(() => {
+    if (!S.currentMarket || rollingOver) return;
+    if (Date.now() >= S.currentMarket.closeTimeMs) {
+      rollingOver = true;
       const nextStart = windowStartSec();
       log("market", "window closed, rolling over to next 5-min market");
-      void activateWindow(nextStart);
+
+      // Settle every paper position at the final print before the reset.
+      const finalSnapshot = marketState.getLatest();
+      if (finalSnapshot) {
+        paperEngine.onWindowEnd(finalSnapshot);
+      }
+
+      void activateWindow(nextStart).finally(() => {
+        rollingOver = false;
+      });
     }
   }, 1_000);
 }
@@ -221,7 +267,7 @@ async function seedOrderBooks(market: ActiveMarketMeta) {
         });
         if (!res.ok) return;
         const book = await res.json();
-        quotes.set(tokenId, { bid: bestBid(book.bids), ask: bestAsk(book.asks) });
+        S.quotes.set(tokenId, { bid: bestBid(book.bids), ask: bestAsk(book.asks) });
       } catch (err) {
         log("clob", `failed to seed book for token ${tokenId.slice(0, 8)}...`, err);
       }
@@ -230,12 +276,12 @@ async function seedOrderBooks(market: ActiveMarketMeta) {
 }
 
 function handleClobEvent(event: any) {
-  if (!currentMarket) return;
+  if (!S.currentMarket) return;
 
   if (event.event_type === "book") {
     const tokenId = event.asset_id;
-    if (tokenId !== currentMarket.upTokenId && tokenId !== currentMarket.downTokenId) return;
-    quotes.set(tokenId, { bid: bestBid(event.bids), ask: bestAsk(event.asks) });
+    if (tokenId !== S.currentMarket.upTokenId && tokenId !== S.currentMarket.downTokenId) return;
+    S.quotes.set(tokenId, { bid: bestBid(event.bids), ask: bestAsk(event.asks) });
     emitSnapshot();
     return;
   }
@@ -244,16 +290,16 @@ function handleClobEvent(event: any) {
     let changed = false;
     for (const change of event.price_changes) {
       const tokenId = change.asset_id;
-      if (tokenId !== currentMarket.upTokenId && tokenId !== currentMarket.downTokenId) continue;
+      if (tokenId !== S.currentMarket.upTokenId && tokenId !== S.currentMarket.downTokenId) continue;
       const bid = Number.parseFloat(change.best_bid ?? "NaN");
       const ask = Number.parseFloat(change.best_ask ?? "NaN");
-      const prev = quotes.get(tokenId) ?? { bid: null, ask: null };
+      const prev = S.quotes.get(tokenId) ?? { bid: null, ask: null };
       const next: TokenQuote = {
         bid: Number.isFinite(bid) ? bid : prev.bid,
         ask: Number.isFinite(ask) ? ask : prev.ask,
       };
       if (next.bid !== prev.bid || next.ask !== prev.ask) {
-        quotes.set(tokenId, next);
+        S.quotes.set(tokenId, next);
         changed = true;
       }
     }
@@ -262,26 +308,26 @@ function handleClobEvent(event: any) {
 }
 
 function resubscribeClob() {
-  if (clobSocket) {
-    clobSocket.removeAllListeners();
+  if (S.clobSocket) {
+    S.clobSocket.removeAllListeners();
     try {
-      clobSocket.close();
+      S.clobSocket.close();
     } catch {
       /* already closed */
     }
-    clobSocket = null;
+    S.clobSocket = null;
   }
   connectClob();
 }
 
 function connectClob() {
-  if (!currentMarket) return;
-  const market = currentMarket;
+  if (!S.currentMarket) return;
+  const market = S.currentMarket;
   const ws = new WebSocket(CLOB_WS_URL);
-  clobSocket = ws;
+  S.clobSocket = ws;
 
   ws.on("open", () => {
-    clobReconnectAttempts = 0;
+    S.clobReconnectAttempts = 0;
     ws.send(
       JSON.stringify({
         type: "market",
@@ -301,15 +347,15 @@ function connectClob() {
   });
 
   ws.on("close", () => {
-    if (clobSocket !== ws) return; // superseded by a rollover resubscribe
+    if (S.clobSocket !== ws) return; // superseded by a rollover resubscribe
     const delay = Math.min(
-      BASE_RECONNECT_DELAY_MS * 2 ** clobReconnectAttempts,
+      BASE_RECONNECT_DELAY_MS * 2 ** S.clobReconnectAttempts,
       MAX_RECONNECT_DELAY_MS
     );
-    clobReconnectAttempts++;
-    log("clob", `reconnecting in ${delay}ms (attempt ${clobReconnectAttempts})`);
+    S.clobReconnectAttempts++;
+    log("clob", `reconnecting in ${delay}ms (attempt ${S.clobReconnectAttempts})`);
     setTimeout(() => {
-      if (clobSocket === ws) connectClob();
+      if (S.clobSocket === ws) connectClob();
     }, delay);
   });
 
@@ -335,7 +381,7 @@ function handleRtdsMessage(msg: any) {
       recordChainlinkTick({ timestampMs: Number(point.timestamp), value: Number(point.value) });
     }
     resolvePriceToBeat();
-    emitSnapshot(latestChainlink?.timestampMs ?? Date.now());
+    emitSnapshot(S.latestChainlink?.timestampMs ?? Date.now());
     return;
   }
 
@@ -351,10 +397,10 @@ function handleRtdsMessage(msg: any) {
 
 function connectRtds() {
   const ws = new WebSocket(RTDS_WS_URL);
-  rtdsSocket = ws;
+  S.rtdsSocket = ws;
 
   ws.on("open", () => {
-    rtdsReconnectAttempts = 0;
+    S.rtdsReconnectAttempts = 0;
     ws.send(
       JSON.stringify({
         action: "subscribe",
@@ -378,15 +424,15 @@ function connectRtds() {
   });
 
   ws.on("close", () => {
-    if (rtdsSocket !== ws) return;
+    if (S.rtdsSocket !== ws) return;
     const delay = Math.min(
-      BASE_RECONNECT_DELAY_MS * 2 ** rtdsReconnectAttempts,
+      BASE_RECONNECT_DELAY_MS * 2 ** S.rtdsReconnectAttempts,
       MAX_RECONNECT_DELAY_MS
     );
-    rtdsReconnectAttempts++;
-    log("rtds", `reconnecting in ${delay}ms (attempt ${rtdsReconnectAttempts})`);
+    S.rtdsReconnectAttempts++;
+    log("rtds", `reconnecting in ${delay}ms (attempt ${S.rtdsReconnectAttempts})`);
     setTimeout(() => {
-      if (rtdsSocket === ws) connectRtds();
+      if (S.rtdsSocket === ws) connectRtds();
     }, delay);
   });
 
@@ -397,30 +443,105 @@ function connectRtds() {
 }
 
 // ---------------------------------------------------------------------------
+// RTDS Chainlink ETH/USD stream (separate socket so its backfill arrays can
+// never be mistaken for BTC ticks). Only the latest value is kept -- the
+// cross-market strategy reads its history back out of the snapshot buffer.
+// ---------------------------------------------------------------------------
+
+function handleEthMessage(msg: any) {
+  if (msg?.topic && msg.topic !== "crypto_prices_chainlink") return;
+  const payload = msg?.payload;
+  if (!payload) return;
+
+  if (Array.isArray(payload.data)) {
+    const last = payload.data[payload.data.length - 1];
+    if (last?.value !== undefined) {
+      S.latestEth = { timestampMs: Number(last.timestamp), value: Number(last.value) };
+    }
+    return;
+  }
+
+  if (payload.value !== undefined) {
+    S.latestEth = {
+      timestampMs: Number(payload.timestamp ?? Date.now()),
+      value: Number(payload.value),
+    };
+  }
+}
+
+function connectEth() {
+  const ws = new WebSocket(RTDS_WS_URL);
+  S.ethSocket = ws;
+
+  ws.on("open", () => {
+    S.ethReconnectAttempts = 0;
+    ws.send(
+      JSON.stringify({
+        action: "subscribe",
+        subscriptions: [
+          {
+            topic: "crypto_prices_chainlink",
+            type: "*",
+            filters: '{"symbol":"eth/usd"}',
+          },
+        ],
+      })
+    );
+  });
+
+  ws.on("message", (raw: Buffer) => {
+    try {
+      handleEthMessage(JSON.parse(raw.toString()));
+    } catch {
+      // ignore malformed frames
+    }
+  });
+
+  ws.on("close", () => {
+    if (S.ethSocket !== ws) return;
+    const delay = Math.min(
+      BASE_RECONNECT_DELAY_MS * 2 ** S.ethReconnectAttempts,
+      MAX_RECONNECT_DELAY_MS
+    );
+    S.ethReconnectAttempts++;
+    log("rtds-eth", `reconnecting in ${delay}ms (attempt ${S.ethReconnectAttempts})`);
+    setTimeout(() => {
+      if (S.ethSocket === ws) connectEth();
+    }, delay);
+  });
+
+  ws.on("error", (err: unknown) => {
+    log("rtds-eth", "websocket error", err);
+    ws.close();
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
 
 /**
- * Starts the whole live pipeline (idempotent):
+ * Starts the whole live pipeline (idempotent, process-wide):
  *   Gamma discovery -> Chainlink RTDS stream -> CLOB book stream -> snapshots.
  */
 export async function startPolymarketStream(): Promise<void> {
-  if (started) {
-    await startPromise;
+  if (S.started) {
+    await S.startPromise;
     return;
   }
-  started = true;
+  S.started = true;
 
-  startPromise = (async () => {
+  S.startPromise = (async () => {
     connectRtds();
+    connectEth();
     await activateWindow(windowStartSec());
     watchForRollover();
   })().catch((err) => {
     console.error("[ws] failed to start live pipeline", err);
-    started = false;
+    S.started = false;
   });
 
-  await startPromise;
+  await S.startPromise;
 }
 
 /** @deprecated kept for backwards compatibility -- use startPolymarketStream. */
