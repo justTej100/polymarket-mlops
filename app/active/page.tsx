@@ -10,11 +10,10 @@ export default function ActivePage() {
 
   return (
     <>
-      <p className="page-title">Live — BTC / USDT Window</p>
+      <p className="page-title">Live — Polymarket BTC 5-min Up/Down</p>
       <MarketEmbed
         snapshot={data?.snapshot ?? null}
         history={data?.history ?? []}
-        signals={data?.signals ?? []}
         connected={connected}
         mode="live"
       />

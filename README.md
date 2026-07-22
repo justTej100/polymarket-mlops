@@ -3,177 +3,107 @@
 Watches Polymarket's 5-minute BTC Up/Down markets through 9 independent
 rule-based trading strategies, live and in simulation, on two matching pages.
 
-- **/active** — the current live market, streamed via WebSocket, no refresh needed.
-- **/simulation** — the same 9 strategies replayed tick-by-tick over a historical (or synthetic demo) 5-min window, with play/pause/scrub controls.
+- **/active** — the current live market, streamed end-to-end (Chainlink price
+  feed + Polymarket order book), no refresh needed.
+- **/simulation** — the same 9 strategies replayed tick-by-tick over a real,
+  recently-resolved 5-min window, with play/pause/scrub controls.
 
-Both pages render the exact same UI: a live market header, a baseline board
-(green YES zone above, red NO zone below, one box per strategy positioned by
-its current call and confidence), and a text panel underneath explaining what
-each strategy is doing and why it's currently saying what it's saying.
+Both pages render the same UI: a live market header with real Up/Down
+buy (ask) and sell (bid) prices, a Polymarket-style chart (dashed
+price-to-beat line, green while Up is winning, red while Down is winning), a
+strategy board, and an explainer panel describing what each strategy is
+saying and why.
+
+## Quick start — .env and go
+
+```bash
+cp .env.example .env   # defaults work as-is, nothing to fill in
+make install           # npm install + database init
+make dev               # http://localhost:3000
+```
+
+That's it. Every data feed is public — no API keys:
+
+| Feed | What it provides |
+| --- | --- |
+| Gamma API (`gamma-api.polymarket.com`) | Market discovery via the deterministic `btc-updown-5m-{timestamp}` slug |
+| RTDS WebSocket (`ws-live-data.polymarket.com`) | Chainlink BTC/USD price stream — the exact feed these markets resolve against, including the strike ("price to beat") |
+| CLOB WebSocket + REST (`clob.polymarket.com`) | Live order book: real best bid/ask for the Up and Down tokens |
+| Binance klines REST | 1-second BTC price history for the simulation page |
+
+The Next.js server owns the live connections and pushes updates to the
+browser over Server-Sent Events — the dashboard never polls, and it rolls
+over to the next 5-minute market automatically.
 
 ## Why this architecture
 
 - **One Next.js app, not Flask + a separate frontend.** All 9 strategies are
-  simple rule-based functions over price/order-book data — no ML, no Python
-  data-science stack needed — so one TypeScript codebase end-to-end is
-  simpler to build, deploy, and maintain than two.
+  simple rule-based functions over price/order-book data, so one TypeScript
+  codebase end-to-end is simpler to build, deploy, and maintain than two.
 - **Strategies share one interface** (`lib/strategies/types.ts`): every
-  strategy is `(snapshot, history) => Signal`. The live worker and the
+  strategy is `(snapshot, history) => Signal`. The live pipeline and the
   backtest runner both call the exact same functions — write a strategy once,
   it works in both modes automatically.
-- **An always-on worker process, not serverless functions.** The Polymarket
-  WebSocket connection needs a long-lived process, which is why this is
-  meant to be deployed on **Railway** or **Fly.io** (always-on Node servers),
-  not Vercel (whose functions spin down and can't hold a socket open).
-- **The browser never polls.** The worker keeps an in-memory `marketState`
-  store updated on every WS tick, and the dashboard subscribes to
-  `/api/stream` (Server-Sent Events) to get pushed updates — that's the "no
-  refresh needed" auto-update.
-- **The local database only stores what matters**, not every tick: a `Signal`
-  row is written only when a strategy's direction *changes*, and each signal
-  can now accumulate a trade ledger (`SignalEvent` rows plus realized PnL
-  fields) so entries, sells, wins, and losses are all persisted without
-  storing raw ticks. If `NEON_DATABASE_URL` is present, the app switches to
-  the Neon/Postgres Prisma client instead of the local SQLite client.
+- **The browser never polls.** The server keeps an in-memory `marketState`
+  store updated on every WebSocket tick, and the dashboard subscribes to
+  `/api/stream` (Server-Sent Events) to get pushed updates.
+- **The database only stores what matters**, not every tick: a `Signal` row
+  is written only when a strategy's direction *changes* (run `make worker`
+  for that persistence loop). If `NEON_DATABASE_URL` is set, the app uses the
+  Neon/Postgres Prisma client instead of local SQLite.
 
 ## Project layout
 
 ```
 lib/strategies/       the 9 strategies + shared types (single source of truth)
-lib/polymarket/       Gamma API (market discovery), WS client (live prices),
-                      historical/synthetic data (backtesting)
-lib/worker/           in-memory market state, the live loop, the backtest runner
+lib/polymarket/       Gamma discovery, live WS pipeline, historical replay data
+lib/worker/           in-memory market state, the signal-persistence loop, backtests
 lib/hooks/            useLiveStream — client-side SSE subscription
-components/           MarketEmbed, StrategyBoard, StrategyExplainer (shared by both pages)
+components/           MarketEmbed, BtcPriceChart, StrategyBoard, StrategyExplainer
 app/active/           live page
 app/simulation/       simulation page
 app/api/stream/       SSE endpoint for the live page
-app/api/backtest/     returns a historical/synthetic window + backtest results
+app/api/backtest/     returns a historical window + backtest results
 prisma/schema.prisma  Market / Signal / SignalEvent / BacktestRun tables
 ```
 
-## System A — 9 Independent Rule-Based Strategies
+## The 9 strategies
 
-The dashboard still centers on the same nine strategies. Each one is a
-separate rule-based signal with its own edge, and the UI plus database now
-track both the signal and its realized outcome.
+1. **Lottery Ticket** — buys the cheap side when it's deeply out of the money;
+   small entries, big payoff if the late-window move reverses.
+2. **Near-Certain Snipe** — buys a nearly-decided market near expiry while it
+   still trades below the terminal payoff.
+3. **Price Arbitrage** — buys both sides when YES + NO compress below $1.
+4. **Fibonacci Retracement** — enters around retracement levels of the recent
+   swing high/low.
+5. **MACD Momentum** — short-window MACD on the live BTC price.
+6. **RSI Momentum** — fades oversold/overbought stretches while there's time.
+7. **VWAP Momentum** — leans with sustained strength above/below the window VWAP.
+8. **Momentum Stacking** — requires multiple momentum indicators to align.
+9. **Dump-Hedge Arbitrage** — fades sharp BTC dumps/pumps before the book
+   catches up.
 
-### Strategy 1 — Lottery Ticket
+Each strategy is the same `(snapshot, history) => Signal` interface, so the
+live pipeline, simulation replay, and backtests all evaluate the same logic.
 
-Buys the cheap side when it gets deeply out of the money. The edge comes from
-small entries with large payoff asymmetry if the late-window move reverses.
-
-### Strategy 2 — Near-Certain Snipe
-
-Looks for a nearly-decided market near expiry and buys the winning side when
-it still trades below the terminal payoff.
-
-### Strategy 3 — Price Arbitrage
-
-Watches for YES + NO compressing below $1 and buys both sides when the combined
-cost leaves room for a guaranteed edge.
-
-### Strategy 4 — Fibonacci Retracement
-
-Finds the recent swing high/low and looks for entries around retracement levels
-where the token price is likely to continue its move.
-
-### Strategy 5 — MACD Momentum
-
-Uses short-window MACD on the live BTC price to catch fresh momentum shifts.
-
-### Strategy 6 — RSI Momentum
-
-Uses RSI to spot oversold or overbought stretches and fade them when the
-window still has enough time left.
-
-### Strategy 7 — VWAP Momentum
-
-Compares current price against the window VWAP and leans with sustained
-strength above or below that anchor.
-
-### Strategy 8 — Momentum Stacking
-
-Requires multiple momentum indicators to line up before it becomes directional.
-
-### Strategy 9 — Dump-Hedge Arbitrage
-
-Reactively fades sharp BTC dumps or pumps and tries to hedge the mispricing
-before the book fully catches up.
-
-Each strategy is still the same `(snapshot, history) => Signal` interface, so
-the live worker, simulation replay, and backtests all evaluate the same logic.
-
-## Setup
+## Commands
 
 ```bash
-npm install
-cp .env.example .env
-npm run prisma:migrate
+make dev      # dashboard (live pipeline starts on first page load)
+make worker   # optional: always-on process that persists strategy signals
+make test     # TypeScript checks + strategy/API tests
+make build    # production build
+make start    # production server
+make clean    # remove local build artifacts
 ```
 
-Run the dashboard:
-
-```bash
-npm run dev
-```
-
-Run the live worker (separate process, holds the WebSocket open):
-
-```bash
-npm run worker
-```
-
-
-## Makefile
-
-The Makefile is intentionally Node/Next only. It does not start Docker,
-Redis, MLflow, Prometheus, Grafana, or any Python services.
-
-```bash
-make install
-make test
-make build
-```
-
-From the current Windows/PowerShell environment, `make` is not available on
-PATH. Run it through WSL instead:
-
-```bash
-wsl bash -lc 'cd /home/tj/pm && make test'
-```
-
-Useful targets:
-
-- `make dev` starts the Next.js dev server.
-- `make worker` starts the long-lived Polymarket stream worker.
-- `npm run prisma:generate` generates the local SQLite Prisma client.
-- `npm run prisma:generate:neon` generates the Neon/Postgres Prisma client.
-- `make prisma-migrate` runs `prisma migrate dev`.
-- `npm run prisma:migrate` runs the local SQLite migration.
-- `npm run prisma:migrate:neon` runs migrations for the Neon/Postgres schema.
-- `make clean` removes local build artifacts.
-
-## Known TODOs before this is fully live-trading-real
-
-1. **`lib/polymarket/gammaClient.ts`** — confirm the exact Gamma API query
-   params for the 5-min BTC series against current docs/network tab; market
-   slugs have changed before.
-2. **`lib/polymarket/wsClient.ts`** — confirm the exact WS message shape
-   (`price_change` / `book` event fields) against current Polymarket WS docs.
-3. **`lib/polymarket/historicalClient.ts`** — wire up the real historical
-   price endpoint. Until then, `/api/backtest` falls back to a clearly-labeled
-   synthetic random-walk window so the simulation page works end-to-end
-   locally.
-
-None of these change any strategy logic or the UI — they're isolated to the
-three files above by design.
+On Windows, run these through WSL: `wsl bash -lc 'cd /home/tj/pm && make dev'`.
 
 ## Deploying
 
 1. Push to GitHub.
-2. If you later want a shared remote database, swap `DATABASE_URL` to a
-  hosted Postgres or SQLite path and regenerate Prisma.
-3. Deploy to Railway or Fly.io as an always-on Node service if you need the
-  live worker running 24/7.
-4. Run `npm run worker` as a second process/service alongside `npm start`.
+2. Deploy to Railway or Fly.io as an always-on Node service (the WebSocket
+   connections need a long-lived process — not Vercel serverless).
+3. Optionally run `npm run worker` as a second process to persist signals 24/7.
+4. For a shared remote database, set `NEON_DATABASE_URL` in the environment
+   and run `npm run prisma:migrate:neon` once.

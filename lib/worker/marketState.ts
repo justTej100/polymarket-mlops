@@ -4,10 +4,11 @@ import { MarketSnapshot } from "../strategies/types";
 // Lives entirely in the worker process's memory. Every WebSocket tick updates
 // this, and the SSE route (app/api/stream) subscribes to "update" events to
 // push the same data to the browser -- no polling, no DB round-trip on the
-// hot path. Only strategy *signals* get written to Postgres (see db.ts),
+// hot path. Only strategy *signals* get written to the DB (see db.ts),
 // not every raw tick.
 
-const HISTORY_LIMIT = 300; // ~ a few minutes of ticks at typical WS frequency
+const HISTORY_LIMIT = 360; // > one full 5-min window at ~1 snapshot/sec
+const HISTORY_MIN_GAP_MS = 900; // history is ~1Hz even if ticks come faster
 
 class MarketStateStore extends EventEmitter {
   private history: MarketSnapshot[] = [];
@@ -15,10 +16,20 @@ class MarketStateStore extends EventEmitter {
 
   update(snapshot: MarketSnapshot) {
     this.latest = snapshot;
-    this.history.push(snapshot);
-    if (this.history.length > HISTORY_LIMIT) {
-      this.history.shift();
+
+    // Keep `latest` real-time but sample history at ~1Hz so a burst of
+    // order-book ticks can't evict the start of the window from the chart.
+    const lastKept = this.history[this.history.length - 1];
+    if (!lastKept || snapshot.timestamp - lastKept.timestamp >= HISTORY_MIN_GAP_MS) {
+      this.history.push(snapshot);
+      if (this.history.length > HISTORY_LIMIT) {
+        this.history.shift();
+      }
+    } else {
+      // Refresh the newest sample in place so quotes stay current.
+      this.history[this.history.length - 1] = snapshot;
     }
+
     this.emit("update", snapshot);
   }
 

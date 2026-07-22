@@ -3,8 +3,8 @@
 help:
 	@echo "polymarket-strategies - common targets:"
 	@echo "  make install          Install npm dependencies and initialize the DB"
-	@echo "  make dev              Start the Next.js dev server"
-	@echo "  make worker           Start the always-on live market worker"
+	@echo "  make dev              Start the dashboard (live pipeline starts on page load)"
+	@echo "  make worker           Optional: persist strategy signals to the DB 24/7"
 	@echo "  make build            Build the Next.js app"
 	@echo "  make start            Start the production Next.js server"
 	@echo "  make test             Run TypeScript checks and strategy/API tests"

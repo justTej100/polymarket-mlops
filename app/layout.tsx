@@ -3,7 +3,8 @@ import { NavLinks } from "@/components/NavLinks";
 
 export const metadata = {
   title: "Polymarket 9-Strategy Board",
-  description: "9 rule-based strategies watching BTC 5-min Up/Down markets, live and simulated.",
+  description:
+    "9 rule-based strategies watching Polymarket's BTC 5-min Up/Down markets, live and simulated.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

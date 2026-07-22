@@ -12,14 +12,24 @@ export type Direction = "YES" | "NO" | "BOTH" | "NEUTRAL";
 export interface MarketSnapshot {
   conditionId: string;
   asset: "BTC";
-  priceToBeat: number;      // the strike price for this window
-  currentPrice: number;     // current BTC spot price
-  yesPrice: number;         // current YES token price (0-1)
-  noPrice: number;          // current NO token price (0-1)
+  priceToBeat: number;      // Chainlink BTC/USD price at window open (the strike)
+  currentPrice: number;     // current Chainlink BTC/USD price
+  yesPrice: number;         // Up token midpoint price (0-1)
+  noPrice: number;          // Down token midpoint price (0-1)
   yesBidAskSpread: number;
   secondsRemaining: number; // seconds left in the 5-min window
   timestamp: number;        // ms epoch
   volume24h?: number;
+
+  // Real order-book quotes from the Polymarket CLOB. Buy at the ask, sell at
+  // the bid. Optional because synthetic/backtest windows may not carry a book.
+  upBid?: number;
+  upAsk?: number;
+  downBid?: number;
+  downAsk?: number;
+  /** True while the strike price for this window hasn't been confirmed yet. */
+  priceToBeatPending?: boolean;
+  question?: string;        // e.g. "Bitcoin Up or Down - July 22, 2:30AM-2:35AM ET"
 }
 
 /** Rolling history a strategy can look back over (most recent last). */

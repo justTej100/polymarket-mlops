@@ -24,10 +24,10 @@ export function StrategyBoard({ signals }: { signals: StrategySignalPayload[] })
   return (
     <div className="board">
       <div className="board__zone board__zone--yes">
-        <span className="board__zone-label">YES</span>
+        <span className="board__zone-label">UP / YES</span>
       </div>
       <div className="board__zone board__zone--no">
-        <span className="board__zone-label">NO</span>
+        <span className="board__zone-label">DOWN / NO</span>
       </div>
       <div className="board__baseline" />
 

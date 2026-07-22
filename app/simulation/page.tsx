@@ -95,7 +95,6 @@ export default function SimulationPage() {
       <MarketEmbed
         snapshot={currentSnapshot}
         history={payload?.snapshots.slice(0, tickIndex + 1) ?? []}
-        signals={currentSignals}
         connected={true}
         mode="simulation"
       />
